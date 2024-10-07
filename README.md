@@ -26,4 +26,4 @@ For starters, you'll need Python 3. Setup a venv for the project and activate it
 Then, get all the necessary dependencies with `pip install -r requirements.txt`.
 
 To bundle everything into a Windows executable, run `pyinstaller --onefile DbdSocketsMixer.py`.
-That will generate the portable exe at `.\dist\DbdSocketsMixer.exe`.
+That will generate a portable EXE at `.\dist\DbdSocketsMixer.exe`.
