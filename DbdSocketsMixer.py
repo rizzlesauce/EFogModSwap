@@ -15,7 +15,7 @@ import argparse
 from contextlib import contextmanager
 
 __author__ = 'Ross Adamson'
-__version__ = '0.1.0'
+__version__ = '0.1.1'
 __license__ = 'MIT'
 
 ItemTypeName = '$type'
