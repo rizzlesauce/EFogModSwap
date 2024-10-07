@@ -407,11 +407,12 @@ def main(args):
             if len(attachmentFilenames):
                 print(f'Loading attachments...')
                 for filenameIndex, filename in enumerate(attachmentFilenames):
+                    filePath = os.path.join(attachmentsDir, filename)
                     try:
                         if filename.endswith('.yaml') or filename.endswith('.json'):
                             with oneLinePrinter() as printOneLine:
                                 printOneLine(f'{filenameIndex + 1} - reading {filename}...')
-                                with open(os.path.join('attachments', filename), 'r') as file:
+                                with open(filePath, 'r') as file:
                                     if filename.endswith('.yaml'):
                                         attachmentData = yaml.safe_load(file)
                                     elif filename.endswith('.json'):
