@@ -861,13 +861,13 @@ def main(args):
                     print(f'\nNameMap names added: {nameMapNamesAdded}')
 
                 if writingAlteredDb:
-                    outFilename = f'{customizationItemDbPathNoExtension}-output.json'
+                    outFilename = f'{customizationItemDbPathNoExtension}-altered.json'
                     print(f'\nWriting altered CustomizationItemDB to {outFilename}')
                     with open(outFilename, 'w') as file:
                         json.dump(data, file)
 
                     if True:
-                        outFilename = f'{customizationItemDbPathNoExtension}-output.yaml'
+                        outFilename = f'{customizationItemDbPathNoExtension}-altered.yaml'
                         print(f'\nWriting altered CustomizationItemDB to {outFilename}')
                         with open(outFilename, 'w') as file:
                             yaml.dump(data, file, default_flow_style=False, sort_keys=False)
