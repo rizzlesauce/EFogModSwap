@@ -31,7 +31,7 @@ Edit attachment relations and exclusions, as needed, in the settings file.
 Run `DbdSocketsMixer [settings filename] --mix` to mix all exported socket attachments with the base models in the
 CustimizationItemDB (ones that have no attachments already). Base models remain unaltered, and a new table row
 is added for each permutation of the base model and attachment combinations.
-This will generate command results to `<settings filename>-output.yaml` and an updated CustomizationItemDB JSON file to
+This will generate command results to `<settings filename>-results.yaml` and an updated CustomizationItemDB JSON file to
 `<CustomizationItemDB filename>-altered.json`.
 
 Convert the altered JSON file back into the original `CustomizationItemDB.uasset` file using UAssetGUI (Save As -> `.uasset`).

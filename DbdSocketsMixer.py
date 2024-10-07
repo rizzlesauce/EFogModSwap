@@ -875,7 +875,7 @@ def main(args):
         printError(f'{customizationItemDbPath} does not exist')
         exitCode = 1
 
-    outputInfoFilename = f"{settingsFilePath.removesuffix('.yaml')}-output.yaml"
+    outputInfoFilename = f"{settingsFilePath.removesuffix('.yaml')}-results.yaml"
     print(f'\nWriting command output to {outputInfoFilename}')
     combosAdded = {}
     for modelNameBase, categoryCombinations in combinationsAdded.items():
