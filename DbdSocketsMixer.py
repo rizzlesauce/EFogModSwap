@@ -308,6 +308,7 @@ def main(args):
     printingYaml = False
 
     exportingSocketAttachments = args.extract
+    renamingAttachmentFiles = args.rename
     mixingAttachments = args.mix
     writingUnalteredDb = True
     writingAlteredDb = True
@@ -343,6 +344,7 @@ def main(args):
     attachmentsCreated = []
     nameMapArray = []
     nameMapSet = set(nameMapArray)
+    attachmentsRenamed = {}
 
     def checkAttachmentName(category, attachmentName, otherInfo=None):
         if attachmentName not in attachmentsToMix.get(category, {}):
@@ -401,7 +403,7 @@ def main(args):
             with open(outFilename, 'w') as file:
                 yaml.dump(data, file, default_flow_style=False, sort_keys=False)
 
-        if mixingAttachments:
+        if mixingAttachments or renamingAttachmentFiles:
             attachmentFilenames = os.listdir(attachmentsDir)
             print(f'\nDiscovered {len(attachmentFilenames)} attachment files')
             if len(attachmentFilenames):
@@ -418,9 +420,7 @@ def main(args):
                                     elif filename.endswith('.json'):
                                         attachmentData = json.load(file)
                                     else:
-                                        # add newline to previous string
-                                        print('')
-                                        continue
+                                        raise ValueError(f'Invalid file type: {filename}')
 
                                 attachmentName = attachmentData['attachmentId']
                                 printOneLine(f'loaded {attachmentName}.')
@@ -441,140 +441,155 @@ def main(args):
                             if categoryName not in attachmentsToMix:
                                 attachmentsToMix[categoryName] = {}
                             attachmentsToMix[categoryName][attachmentName] = attachmentData
+
+                            if renamingAttachmentFiles:
+                                newFilename = f'SocketAttachment_{attachmentName}.yaml'
+                                if newFilename == filename:
+                                    print(f'rename not needed (already named correctly).')
+                                else:
+                                    print(f'Renaming {filename} to {newFilename}')
+                                    newFilePath = os.path.join(attachmentsDir, newFilename)
+                                    if os.path.exists(newFilePath):
+                                        printError(f'Could not rename {filename} to {newFilename} (file already exists)!')
+                                        exitCode = 1
+                                    else:
+                                        os.rename(filePath, newFilePath)
+                                        attachmentsRenamed[filename] = newFilename
                     except Exception as e:
                         printError(e)
                         exitCode = 1
                 print('\nDone loading attachments.')
 
-            print('\nGenerating exclusions...')
-            nameMapArray = data['NameMap']
-            nameMapSet = set(nameMapArray)
+            if mixingAttachments:
+                print('\nGenerating exclusions...')
+                nameMapArray = data['NameMap']
+                nameMapSet = set(nameMapArray)
 
-            categoryCombinationsToSkip = {}
-            categoryCombinationSubsetsToSkip = {}
-            setEqualitySymbol = '=='
-            modelRestrictSymbol = ':'
-            modelRestrictSeparator = ','
-            for category, combosList in settings.get('combosToSkip', {}).items():
-                combosToSkip = {}
-                subsetsToSkip = {}
-                for combo in combosList:
-                    isSubset = True
-                    newCombo = set()
-                    baseModels = set()
-                    for attachment in combo:
-                        actualAttachment = attachment
+                categoryCombinationsToSkip = {}
+                categoryCombinationSubsetsToSkip = {}
+                setEqualitySymbol = '=='
+                modelRestrictSymbol = ':'
+                modelRestrictSeparator = ','
+                for category, combosList in settings.get('combosToSkip', {}).items():
+                    combosToSkip = {}
+                    subsetsToSkip = {}
+                    for combo in combosList:
+                        isSubset = True
+                        newCombo = set()
+                        baseModels = set()
+                        for attachment in combo:
+                            actualAttachment = attachment
 
-                        if modelRestrictSymbol in actualAttachment:
-                            markerIndex = actualAttachment.index(modelRestrictSymbol)
-                            baseModelsString = actualAttachment[markerIndex + len(modelRestrictSymbol):]
-                            if baseModelsString:
-                                for modelId in baseModelsString.split(modelRestrictSeparator):
-                                    baseModels.add(modelId)
-                            actualAttachment = actualAttachment[:markerIndex]
+                            if modelRestrictSymbol in actualAttachment:
+                                markerIndex = actualAttachment.index(modelRestrictSymbol)
+                                baseModelsString = actualAttachment[markerIndex + len(modelRestrictSymbol):]
+                                if baseModelsString:
+                                    for modelId in baseModelsString.split(modelRestrictSeparator):
+                                        baseModels.add(modelId)
+                                actualAttachment = actualAttachment[:markerIndex]
 
-                        if setEqualitySymbol in actualAttachment:
-                            isSubset = False
-                            markerIndex = actualAttachment.index(setEqualitySymbol)
-                            actualAttachment = actualAttachment[:markerIndex]
+                            if setEqualitySymbol in actualAttachment:
+                                isSubset = False
+                                markerIndex = actualAttachment.index(setEqualitySymbol)
+                                actualAttachment = actualAttachment[:markerIndex]
 
-                        checkAttachmentName(category, actualAttachment, 'combosToSkip')
-                        newCombo.add(actualAttachment)
+                            checkAttachmentName(category, actualAttachment, 'combosToSkip')
+                            newCombo.add(actualAttachment)
 
-                    if isSubset:
-                        subsetsToSkip[frozenset(newCombo)] = frozenset(baseModels)
-                    else:
-                        combosToSkip[frozenset(newCombo)] = frozenset(baseModels)
+                        if isSubset:
+                            subsetsToSkip[frozenset(newCombo)] = frozenset(baseModels)
+                        else:
+                            combosToSkip[frozenset(newCombo)] = frozenset(baseModels)
 
-                categoryCombinationsToSkip[category] = combosToSkip
-                categoryCombinationSubsetsToSkip[category] = subsetsToSkip
+                    categoryCombinationsToSkip[category] = combosToSkip
+                    categoryCombinationSubsetsToSkip[category] = subsetsToSkip
 
-            categoryComboEquivalentMap = {}
-            for category, equivalentCombosMap in settings.get('equivalentParts', {}).items():
-                # TODO: do we even need this?
-                comboEquivalentMap = {}
-                for equivalent, combos in equivalentCombosMap.items():
-                    checkAttachmentName(category, equivalent, 'equivalentParts->equivalent')
-                    for parts in combos:
-                        combo = frozenset(parts)
-                        # TODO: do we even need this?
-                        comboEquivalentMap[combo] = equivalent
+                categoryComboEquivalentMap = {}
+                for category, equivalentCombosMap in settings.get('equivalentParts', {}).items():
+                    # TODO: do we even need this?
+                    comboEquivalentMap = {}
+                    for equivalent, combos in equivalentCombosMap.items():
+                        checkAttachmentName(category, equivalent, 'equivalentParts->equivalent')
+                        for parts in combos:
+                            combo = frozenset(parts)
+                            # TODO: do we even need this?
+                            comboEquivalentMap[combo] = equivalent
 
-                        if category not in categoryCombinationSubsetsToSkip:
-                            categoryCombinationSubsetsToSkip[category] = {}
+                            if category not in categoryCombinationSubsetsToSkip:
+                                categoryCombinationSubsetsToSkip[category] = {}
 
-                        for part in parts:
-                            checkAttachmentName(category, part, f'equivalentParts.{equivalent}->part')
-                            for comboToSkip, baseModels in [(k, v) for k, v in categoryCombinationSubsetsToSkip[category].items()]:
-                                if part in comboToSkip and not combo <= comboToSkip:
-                                    # if we would skip an aggregate part (not all comprising parts) when combined with other attachments,
-                                    # skip other attachments when combined with aggregate
-                                    newCombo = set(comboToSkip)
-                                    newCombo.remove(part)
-                                    newCombo.add(equivalent)
-                                    if len(newCombo) > 1:
-                                        categoryCombinationSubsetsToSkip[category][frozenset(newCombo)] = baseModels
+                            for part in parts:
+                                checkAttachmentName(category, part, f'equivalentParts.{equivalent}->part')
+                                for comboToSkip, baseModels in [(k, v) for k, v in categoryCombinationSubsetsToSkip[category].items()]:
+                                    if part in comboToSkip and not combo <= comboToSkip:
+                                        # if we would skip an aggregate part (not all comprising parts) when combined with other attachments,
+                                        # skip other attachments when combined with aggregate
+                                        newCombo = set(comboToSkip)
+                                        newCombo.remove(part)
+                                        newCombo.add(equivalent)
+                                        if len(newCombo) > 1:
+                                            categoryCombinationSubsetsToSkip[category][frozenset(newCombo)] = baseModels
 
-                            # don't allow combos that contain both an attachment and one or more of its parts
-                            categoryCombinationSubsetsToSkip[category][frozenset([equivalent, part])] = []
+                                # don't allow combos that contain both an attachment and one or more of its parts
+                                categoryCombinationSubsetsToSkip[category][frozenset([equivalent, part])] = []
 
-                # TODO: do we even need this?
-                categoryComboEquivalentMap[category] = comboEquivalentMap
+                    # TODO: do we even need this?
+                    categoryComboEquivalentMap[category] = comboEquivalentMap
 
-            if args.debug:
-                print('\nProcessing supersetParts...')
+                if args.debug:
+                    print('\nProcessing supersetParts...')
 
-            categoryPartsSupersetAttachmentMap = {}
-            for category, attachmentProperSubsetsMap in settings.get('supersetParts', {}).items():
-                # TODO: do we even need this?
-                partsSupersetAttachmentMap = {}
-                for attachment, properSubsets in attachmentProperSubsetsMap.items():
-                    checkAttachmentName(category, attachment, f'supersetParts->superset')
-                    for parts in properSubsets:
-                        properSubset = frozenset(parts)
+                categoryPartsSupersetAttachmentMap = {}
+                for category, attachmentProperSubsetsMap in settings.get('supersetParts', {}).items():
+                    # TODO: do we even need this?
+                    partsSupersetAttachmentMap = {}
+                    for attachment, properSubsets in attachmentProperSubsetsMap.items():
+                        checkAttachmentName(category, attachment, f'supersetParts->superset')
+                        for parts in properSubsets:
+                            properSubset = frozenset(parts)
 
-                        if True:
-                            if categoryComboEquivalentMap.get(category, {}).get(properSubset, None) == attachment:
-                                printWarning(f"proper subset ({properSubset}) is also a perfect subset of {attachment}", newline=True)
-                                continue
+                            if True:
+                                if categoryComboEquivalentMap.get(category, {}).get(properSubset, None) == attachment:
+                                    printWarning(f"proper subset ({properSubset}) is also a perfect subset of {attachment}", newline=True)
+                                    continue
 
-                        # TODO: do we even need this?
-                        partsSupersetAttachmentMap[properSubset] = attachment
+                            # TODO: do we even need this?
+                            partsSupersetAttachmentMap[properSubset] = attachment
 
-                        if category not in categoryCombinationSubsetsToSkip:
-                            categoryCombinationSubsetsToSkip[category] = {}
+                            if category not in categoryCombinationSubsetsToSkip:
+                                categoryCombinationSubsetsToSkip[category] = {}
 
-                        if args.debug:
-                            print('Adding new combos to skip...')
+                            if args.debug:
+                                print('Adding new combos to skip...')
 
-                        for part in parts:
-                            checkAttachmentName(category, part, f'supersetParts.{attachment}->part')
-                            for comboToSkip, baseModels in [(k, v) for k, v in categoryCombinationSubsetsToSkip[category].items()]:
-                                if part in comboToSkip:
-                                    # if we would skip a subset part when combined with other attachments,
-                                    # skip the same other attachments when combined with the superset attachment
-                                    newCombo = set(comboToSkip)
-                                    newCombo.remove(part)
-                                    newCombo.add(attachment)
-                                    if len(newCombo) > 1:
-                                        if args.debug:
-                                            print(f'Original comboToSkip: {comboToSkip}. New comboToSkip: {newCombo}')
-                                        categoryCombinationSubsetsToSkip[category][frozenset(newCombo)] = baseModels
+                            for part in parts:
+                                checkAttachmentName(category, part, f'supersetParts.{attachment}->part')
+                                for comboToSkip, baseModels in [(k, v) for k, v in categoryCombinationSubsetsToSkip[category].items()]:
+                                    if part in comboToSkip:
+                                        # if we would skip a subset part when combined with other attachments,
+                                        # skip the same other attachments when combined with the superset attachment
+                                        newCombo = set(comboToSkip)
+                                        newCombo.remove(part)
+                                        newCombo.add(attachment)
+                                        if len(newCombo) > 1:
+                                            if args.debug:
+                                                print(f'Original comboToSkip: {comboToSkip}. New comboToSkip: {newCombo}')
+                                            categoryCombinationSubsetsToSkip[category][frozenset(newCombo)] = baseModels
 
-                            # don't allow combos that contain both an attachment and one or more of its proper subset parts
-                            categoryCombinationSubsetsToSkip[category][frozenset([attachment, part])] = []
+                                # don't allow combos that contain both an attachment and one or more of its proper subset parts
+                                categoryCombinationSubsetsToSkip[category][frozenset([attachment, part])] = []
 
-                # TODO: do we even need this?
-                categoryPartsSupersetAttachmentMap[category] = partsSupersetAttachmentMap
+                    # TODO: do we even need this?
+                    categoryPartsSupersetAttachmentMap[category] = partsSupersetAttachmentMap
 
-            for category, comboEquivalentMap in categoryComboEquivalentMap.items():
-                if category not in categoryCombinationSubsetsToSkip:
-                    categoryCombinationSubsetsToSkip[category] = {}
+                for category, comboEquivalentMap in categoryComboEquivalentMap.items():
+                    if category not in categoryCombinationSubsetsToSkip:
+                        categoryCombinationSubsetsToSkip[category] = {}
 
-                for combo in comboEquivalentMap.keys():
-                    # don't allow combos containing all the parts of an entire equivalent attachment - use the equivalent instead
-                    categoryCombinationSubsetsToSkip[category][combo] = []
-            print('\nExclusions generated.')
+                    for combo in comboEquivalentMap.keys():
+                        # don't allow combos containing all the parts of an entire equivalent attachment - use the equivalent instead
+                        categoryCombinationSubsetsToSkip[category][combo] = []
+                print('\nExclusions generated.')
 
         if exportingSocketAttachments or mixingAttachments:
             exports = data['Exports']
@@ -680,8 +695,8 @@ def main(args):
                                 else:
                                     attachmentDisplayName = f'{otherNamesString}_{attachmentIndex}'
 
-                                fileName = f'SocketAttachment_{modelBaseName}_{shortCategoryName}_{attachmentId}.yaml'
-                                filePath = os.path.join(attachmentsDir, fileName)
+                                filename = f'SocketAttachment_{modelBaseName}_{shortCategoryName}_{attachmentId}.yaml'
+                                filePath = os.path.join(attachmentsDir, filename)
 
                                 if os.path.exists(filePath):
                                     printWarning(f'Skipping attachment {attachmentIndex + 1} (file already exists): {filePath}')
@@ -890,13 +905,14 @@ def main(args):
         'errors': errors,
         'warnings': warnings,
         'attachmentsRead': attachmentsRead,
+        'attachmentsRenamed': attachmentsRenamed,
+        'attachmentsCreated': attachmentsCreated,
         'combosAdded': combosAdded,
         'combosSkipped': combosSkipped,
         'nameMapAlterations': {
             'namesRemoved': nameMapNamesRemoved,
             'namesAdded': nameMapNamesAdded,
         },
-        'attachmentsCreated': attachmentsCreated,
     }
 
     with open(outputInfoFilename, 'w') as file:
@@ -929,6 +945,11 @@ can be converted back to the original uasset file using UAssetGUI.
     parser.add_argument(
         '--extract',
         help='extract socket attachment definitions',
+        action='store_true',
+    )
+    parser.add_argument(
+        '--rename',
+        help='rename attachment files to match their corresponding attachment ID (IDs should be globally unique)',
         action='store_true',
     )
     parser.add_argument(
