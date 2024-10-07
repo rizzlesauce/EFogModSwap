@@ -9,7 +9,7 @@ It can also extract socket attachment definitions from a CustomizationItemDB.jso
 Use [UAssetGUI](https://github.com/atenfyr/UAssetGUI) to export a CustomizationItemDB to JSON (Save As -> `.json`).
 In your DbdSocketsMixer YAML settings file, set the path to the CustomizationItemDB.json input file and
 configure other mixing options.
-Run `DbdSocketsMixer <settingsFile> --mix`.
+Run `DbdSocketsMixer <settingsFile.json> --mix`.
 Then, convert the output JSON file back into the original CustomizationItemDB.uasset file using UAssetGUI (Save As -> `.uasset`).
 
 Compatible with DBD-4.4.2, Unreal Engine 4.25, and UAssetGUI 1.0.2
