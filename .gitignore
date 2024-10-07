@@ -1,0 +1,7 @@
+/.venv
+/attachments/
+*.json
+*.yaml
+/build
+/dist
+/*.spec
