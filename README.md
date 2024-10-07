@@ -2,9 +2,11 @@
 
 A CLI that mixes DBD socket attachments with character models.
 
-It can also extract socket attachment definitions from a CustomizationItemDB.json file.
+It can also extract socket attachment definitions from a CustomizationItemDB JSON file.
 
-## Getting Started
+## [Releases](https://github.com/rizzlesauce/DbdSocketsMixer/releases)
+
+## Getting started
 Download the latest EXE from the releases page. Place it in a new directory somewhere on your file system.
 
 Use [UAssetGUI](https://github.com/atenfyr/UAssetGUI) to export a CustomizationItemDB to JSON in the same
@@ -36,12 +38,10 @@ This will generate command results to `<settings filename>-results.yaml` and an 
 
 Convert the altered JSON file back into the original `CustomizationItemDB.uasset` file using UAssetGUI (Save As -> `.uasset`).
 
-## [Releases](https://github.com/rizzlesauce/DbdSocketsMixer/releases)
-
 ## Compatibility
 Compatible with DBD-4.4.2, Unreal Engine 4.25, and UAssetGUI 1.0.2
 
-## Command Usage
+## CLI usage
 
 Run `DbdSocketsMixer -h` for detailed usage and options.
 
