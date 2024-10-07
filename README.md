@@ -1,20 +1,24 @@
 # DbdSocketsMixer
 
-Shell script to mix DBD socket attachments with character models.
+A CLI that mixes DBD socket attachments with character models.
 
-Can also extract socket attachment definitions from a CustomizationItemDB.
-A YAML settings file specifies the input CustomizationItemDB file and the mix options.
-UAssetGUI can be used to export a CustomizationItemDB.uasset file to JSON.
-DbdSocketsMixer reads that JSON file and writes an altered version that can be converted back
-to the original uasset file using UAssetGUI.
+It can also extract socket attachment definitions from a CustomizationItemDB.json file.
+
+## How to use it
+
+Use [UAssetGUI](https://github.com/atenfyr/UAssetGUI) to export a CustomizationItemDB to JSON (Save As -> `.json`).
+In your DbdSocketsMixer YAML settings file, set the path to the CustomizationItemDB.json input file and
+configure other mixing options.
+Run `DbdSocketsMixer <settingsFile> --mix`.
+Then, convert the output JSON file back into the original CustomizationItemDB.uasset file using UAssetGUI (Save As -> `.uasset`).
 
 Compatible with DBD-4.4.2, Unreal Engine 4.25, and UAssetGUI 1.0.2
 
 ## [Releases](https://github.com/rizzlesauce/DbdSocketsMixer/releases)
 
-## How to run
+## Usage
 
-Run `DbdSocketsMixer -h` for usage and options.
+Run `DbdSocketsMixer -h` for detailed usage and options.
 
 ## Building
 
