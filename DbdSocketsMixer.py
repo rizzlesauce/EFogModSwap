@@ -366,7 +366,7 @@ supersetParts:
   # uncomment this if there are no equivalent parts in this category
   #SurvivorLegs: {}
   SurvivorLegs:
-    # define each shortened variant of blue chains as a strict subset of the corresponding original length version
+    # define each shortened variant of blue chains as a proper subset of the corresponding original length version
     KateLegsBlueChains:
     - - KateLegsShortBlueChains
     KateLegsRightBlueChain:
@@ -826,12 +826,10 @@ def main(
                         frozenCombo = frozenset(newCombo)
                         if isSubset:
                             categoryCombinationSubsetsToSkip[category][frozenCombo] = frozenset(baseModels)
-                            if debug:
-                                logSkip(frozenCombo, baseModels, category=category)
                         else:
                             categoryCombinationsToSkip[category][frozenCombo] = frozenset(baseModels)
-                            if debug:
-                                logSkip(frozenCombo, baseModels, isExact=True, category=category)
+                        if debug:
+                            logSkip(frozenCombo, baseModels, isExact=not isSubset, category=category)
 
                 if debug:
                     print('\nReading mutuallyExclusive...')
@@ -888,33 +886,33 @@ def main(
 
                     for equivalent, groups in equivalentCombosMap.items():
                         checkAttachmentName(category, equivalent, 'equivalentParts->equivalent')
-                        for groupIndex, group in enumerate(groups):
-                            combo = frozenset(group)
-                            if combo in comboEquivalentMap:
+                        for groupIndex, parts in enumerate(groups):
+                            frozenParts = frozenset(parts)
+                            if frozenParts in comboEquivalentMap:
                                 printWarning(f'duplicate group (equivalentParts.{category}.{equivalent}[{groupIndex}])')
                                 continue
 
                             # TODO: allow group to map to multiple equivalents?
-                            comboEquivalentMap[combo] = equivalent
+                            comboEquivalentMap[frozenParts] = equivalent
 
                             if category not in categoryCombinationSubsetsToSkip:
                                 categoryCombinationSubsetsToSkip[category] = {}
 
                             partsSeen = set()
-                            for partIndex, part in enumerate(group):
+                            for partIndex, part in enumerate(parts):
                                 if part in partsSeen:
                                     printWarning(f'duplicate part (equivalentParts.{equivalent}[{groupIndex}][{partIndex}])')
                                 else:
                                     checkAttachmentName(category, part, f'equivalentParts.{equivalent}[{groupIndex}][{partIndex}]')
                                     for comboToSkip, baseModels in [(k, v) for k, v in categoryCombinationSubsetsToSkip[category].items()]:
-                                        if part in comboToSkip and not combo <= comboToSkip:
-                                            # if we would skip an aggregate part (not all comprising parts) when combined with other attachments,
-                                            # skip other attachments when combined with aggregate
+                                        if part in comboToSkip and not frozenParts <= comboToSkip:
+                                            # if we would skip some of an aggregate's parts (but not all) when combined with attachments A,
+                                            # skip attachments A when combined with the aggregate.
                                             newCombo = set(comboToSkip)
                                             newCombo.remove(part)
                                             newCombo.add(equivalent)
                                             if len(newCombo) > 1:
-                                                frozenCombo = frozenset(combo)
+                                                frozenCombo = frozenset(newCombo)
                                                 categoryCombinationSubsetsToSkip[category][frozenCombo] = baseModels
                                                 if debug:
                                                     logSkip(frozenCombo, baseModels, category=category)
@@ -932,8 +930,8 @@ def main(
                 for category, attachmentProperSubsetsMap in settings.get('supersetParts', {}).items():
                     for attachment, properSubsets in attachmentProperSubsetsMap.items():
                         checkAttachmentName(category, attachment, f'supersetParts->superset')
-                        for groupIndex, group in enumerate(properSubsets):
-                            properSubset = frozenset(group)
+                        for groupIndex, parts in enumerate(properSubsets):
+                            properSubset = frozenset(parts)
 
                             if True:
                                 if categoryComboEquivalentMap.get(category, {}).get(properSubset, None) == attachment:
@@ -943,7 +941,7 @@ def main(
                             if category not in categoryCombinationSubsetsToSkip:
                                 categoryCombinationSubsetsToSkip[category] = {}
 
-                            for partIndex, part in enumerate(group):
+                            for partIndex, part in enumerate(parts):
                                 checkAttachmentName(category, part, f'supersetParts.{attachment}[{groupIndex}][{partIndex}]')
                                 for comboToSkip, baseModels in [(k, v) for k, v in categoryCombinationSubsetsToSkip[category].items()]:
                                     if part in comboToSkip:
