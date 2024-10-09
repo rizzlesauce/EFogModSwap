@@ -45,7 +45,7 @@ If you left your `attachmentsDir` as the default, you can view attachment defini
 containing your settings file (menu option: `Folder`); then, from there, opening the `attachments` folder.
 Some attachments might be duplicates. In that case, delete the duplicate attachment definition files.
 
-Once you're done editing the attachment definitions, run `DbdSocketsMixer [settings filename] --rename`
+Once you're done editing the attachment definitions, run `DbdSocketsMixer.exe [settings filename] --rename`
 (menu option: `Rename`) to automatically rename each attachment definition file in a standard way to match its
 attachment ID.
 
