@@ -14,6 +14,8 @@ import hashlib
 import argparse
 from contextlib import contextmanager
 import pathlib
+import webbrowser
+import platform
 import Attachment
 
 __author__ = 'Ross Adamson'
@@ -39,6 +41,67 @@ def oneLinePrinter():
     finally:
         # end the line
         print('')
+
+def getWindowsDefaultEditor():
+    """Gets the default editor for Windows."""
+
+    try:
+        # Try to get the editor from the environment variable
+        editor = os.environ['EDITOR']
+    except KeyError:
+        # If the environment variable is not set, try to get the default editor from the registry
+        import winreg
+
+        try:
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Software\\Microsoft\\Windows\\CurrentVersion\\Applets\\Notepad\\Execute") as key:
+                editor = winreg.QueryValueEx(key, "")[0]
+        except FileNotFoundError:
+            # If the registry key is not found, return Notepad as the default editor
+            editor = "notepad.exe"
+
+    return editor
+
+def openFile(filePath):
+    success = False
+
+    testingFailWebbrowser = False
+    testingFailStartfile = False
+    testingFailEditor = False
+
+    try:
+        print(f'Opening {filePath}...')
+        if testingFailWebbrowser:
+            raise ValueError('webbrowser failed to run')
+        webbrowser.open(filePath)
+        success = True
+    except Exception as e:
+        eprint()
+        eprint(e)
+        eprint()
+        try:
+            print(f'Trying a different way to open...')
+            if testingFailStartfile:
+                raise ValueError('startfile failed to run')
+            os.startfile(filePath)
+            success = True
+        except Exception as e2:
+            eprint()
+            eprint(e2)
+            eprint()
+            if platform.system() == 'Windows':
+                try:
+                    editor = getWindowsDefaultEditor()
+                    print(f'Opening with {editor}...')
+                    if testingFailEditor:
+                        raise ValueError('editor failed to run')
+                    os.system(f'start {editor} {filePath}')
+                    success = True
+                except Exception as e3:
+                    eprint()
+                    eprint(e3)
+                    eprint()
+
+    return success
 
 def jsonifyDataRecursive(value, isKey=False):
     if isinstance(value, dict):
@@ -254,8 +317,11 @@ def addAllToNameMap(value, nameMapSet, path=''):
         for vIndex, v in enumerate(value):
             addAllToNameMap(v, nameMapSet, f'{path}[{vIndex}]/')
 
+def getResultsFilePath(settingsFilePath):
+    return f"{settingsFilePath.removesuffix('.yaml')}-results.yaml"
+
 def getSettingsTemplate():
-    return '''# KateBikerVariants
+    return '''# settings file for DbdSocketsMixer
 
 # other settings to import - keys in this file will replace keys in imports
 import: []
@@ -385,16 +451,22 @@ combosToSkip:
     - KateGoldNecklaceNoRing
 '''
 
-def main(args):
+def main(
+    settingsFilePath,
+    listingInfo,
+    creating,
+    exportingSocketAttachments,
+    renamingAttachmentFiles,
+    mixingAttachments,
+    nonInteractive,
+    debug,
+):
     """ Main entry point of the app """
 
     # TODO: remove -- too verbose
     printingJson = False
     printingYaml = False
 
-    exportingSocketAttachments = args.extract
-    renamingAttachmentFiles = args.rename
-    mixingAttachments = args.mix
     writingUnalteredDb = True
     writingAlteredDb = True
 
@@ -435,9 +507,8 @@ def main(args):
         if attachmentName not in attachmentsToMix.get(category, {}):
             printWarning(f"reference to missing attachment: {category}::{attachmentName}{' (' if otherInfo else ''}{otherInfo or ''}{')' if otherInfo else ''}", newline=True)
 
-    settingsFilePath = args.settingsFilePath
     if not os.path.isfile(settingsFilePath):
-        printWarning(f'Settings file ({settingsFilePath}) does not exist. Creating it now with template content.')
+        printWarning(f'Settings file ({settingsFilePath}) does not exist. Creating it now with default content.')
         if printingYaml:
             print(getSettingsTemplate())
         with open(settingsFilePath, 'w') as file:
@@ -485,87 +556,133 @@ def main(args):
         printWarning(f'`attachmentsDir` ({attachmentsDir}) does not exist. Creating it now.')
         os.makedirs(attachmentsDir, exist_ok=True)
 
-    if args.create:
-        done = False
-        print('Adding attachment definition...')
-        while not done:
-            attachment = copy.deepcopy(Attachment.BasicAttachment)
-            attachment['modelCategory'] = ''
-            categoryOptions = {'SurvivorTorso', 'SurvivorLegs', 'SurvivorHead'}
-            while not attachment['modelCategory']:
-                attachment['modelCategory'] = input(f"Model category ({', '.join(categoryOptions)}): ")
-                if attachment['modelCategory'] not in categoryOptions:
-                    eprint('ERROR: unsupported category')
-                    attachment['modelCategory'] = ''
+    if creating:
+        if nonInteractive:
+            printWarning('Cannot create attachment definition in non-interactive mode')
+        else:
+            done = False
+            canceled = False
 
-            attachment['attachmentId'] = ''
-            while not attachment['attachmentId']:
-                attachment['attachmentId'] = input('Attachment ID: ')
-                filename = Attachment.getAttachmentFilename(attachment['attachmentId'])
-                filePath = os.path.join(attachmentsDir, filename)
-                if os.path.exists(filePath):
-                    eprint('ERROR: attachment ID already exists')
-                    attachment['attachmentId'] = ''
+            def confirmCanceled():
+                nonlocal canceled
+                canceled = True
+                return canceled
 
-            attachment['displayName'] = ''
-            while not attachment['displayName']:
-                attachment['displayName'] = input('Display name: ')
+            print('Adding attachment definition...')
+            while not done:
+                attachment = copy.deepcopy(Attachment.BasicAttachment)
+                attachment['modelCategory'] = ''
+                categoryOptions = {'SurvivorTorso', 'SurvivorLegs', 'SurvivorHead'}
+                while not attachment['modelCategory']:
+                    attachment['modelCategory'] = input(f"Model category ({', '.join(categoryOptions)}): ")
+                    if not attachment['modelCategory'].strip():
+                        if confirmCanceled():
+                            break
+                        else:
+                            continue
 
-            values = getPropertyValue(attachment['attachmentData'])
-            blueprintAttachment = findNextItemByFields(
-                values,
-                [
-                    ItemTypeName,
-                    NameFieldName,
-                ],
-                [
-                    'UAssetAPI.PropertyTypes.Objects.SoftObjectPropertyData, UAssetAPI',
-                    'AttachementBlueprint',
-                ]
-            )
-            assetPath = getPropertyValue(blueprintAttachment)['AssetPath']
-            assetPath['AssetName'] = ''
-            while not assetPath['AssetName']:
-                assetPath['AssetName'] = input('Blueprint path: ')
-                if not assetPath['AssetName'].startswith('/Game/'):
-                    eprint('ERROR: should start with `/Game/`')
-                    assetPath['AssetName'] = ''
-                    continue
+                    if attachment['modelCategory'] not in categoryOptions:
+                        eprint('ERROR: unsupported category')
+                        attachment['modelCategory'] = ''
 
-                try:
-                    path = pathlib.PurePosixPath(assetPath['AssetName'])
-                except Exception as e:
-                    eprint('ERROR: invalid path')
-                    assetPath['AssetName'] = ''
-                    continue
+                if canceled:
+                    break
 
-                if not path.stem:
-                    eprint('ERROR: invalid name')
-                    assetPath['AssetName'] = ''
-                    continue
+                attachment['attachmentId'] = ''
+                while not attachment['attachmentId']:
+                    attachment['attachmentId'] = input('Attachment ID: ')
+                    if not attachment['attachmentId'].strip():
+                        if confirmCanceled():
+                            break
+                        else:
+                            continue
 
-                stem = path.stem
-                suffix = f'.{stem}_C'
-                if path.suffix:
-                    if path.suffix != suffix:
-                        eprint('ERROR: invalid path suffix. Should be {suffix}')
+                    filename = Attachment.getAttachmentFilename(attachment['attachmentId'])
+                    filePath = os.path.join(attachmentsDir, filename)
+                    if os.path.exists(filePath):
+                        eprint('ERROR: attachment ID already exists')
+                        attachment['attachmentId'] = ''
+
+                if canceled:
+                    break
+
+                attachment['displayName'] = ''
+                while not attachment['displayName']:
+                    attachment['displayName'] = input('Display name: ')
+                    if not attachment['displayName'].strip():
+                        if confirmCanceled():
+                            break
+
+                if canceled:
+                    break
+
+                values = getPropertyValue(attachment['attachmentData'])
+                blueprintAttachment = findNextItemByFields(
+                    values,
+                    [
+                        ItemTypeName,
+                        NameFieldName,
+                    ],
+                    [
+                        'UAssetAPI.PropertyTypes.Objects.SoftObjectPropertyData, UAssetAPI',
+                        'AttachementBlueprint',
+                    ]
+                )
+                assetPath = getPropertyValue(blueprintAttachment)['AssetPath']
+                assetPath['AssetName'] = ''
+                while not assetPath['AssetName']:
+                    assetPath['AssetName'] = input('Blueprint path: ')
+                    if not assetPath['AssetName'].strip():
+                        if confirmCanceled():
+                            break
+                        else:
+                            continue
+
+                    if not assetPath['AssetName'].startswith('/Game/'):
+                        eprint('ERROR: should start with `/Game/`')
                         assetPath['AssetName'] = ''
                         continue
-                else:
-                    path = path.with_name(f'{stem}{suffix}')
 
-                normalizedPath = path.as_posix()
-                print(f'Normalized path: {normalizedPath}')
-                assetPath['AssetName'] = normalizedPath
+                    try:
+                        path = pathlib.PurePosixPath(assetPath['AssetName'])
+                    except Exception as e:
+                        eprint('ERROR: invalid path')
+                        assetPath['AssetName'] = ''
+                        continue
 
-            print(f'Writing to {filePath}')
-            with open(filePath, 'w') as file:
-                yamlDump(attachment, file)
-            print('done.')
+                    if not path.stem:
+                        eprint('ERROR: invalid name')
+                        assetPath['AssetName'] = ''
+                        continue
 
-            response = input('Add another (Y/n)?')
-            if response.lower() == 'n' or not response:
-                done = True
+                    stem = path.stem
+                    suffix = f'.{stem}_C'
+                    if path.suffix:
+                        if path.suffix != suffix:
+                            eprint('ERROR: invalid path suffix. Should be {suffix}')
+                            assetPath['AssetName'] = ''
+                            continue
+                    else:
+                        path = path.with_name(f'{stem}{suffix}')
+
+                    normalizedPath = path.as_posix()
+                    print(f'Normalized path: {normalizedPath}')
+                    assetPath['AssetName'] = normalizedPath
+
+                if canceled:
+                    break
+
+                print(f'Writing to {filePath}')
+                with open(filePath, 'w') as file:
+                    yamlDump(attachment, file)
+                print('done.')
+
+                response = input('Add another (Y/n)?')
+                if response.lower() == 'n' or not response:
+                    done = True
+
+            if canceled:
+                print(f'\nAdd canceled.\n')
 
     customizationItemDbPath = settings.get('customizationItemDbPath', None)
     if customizationItemDbPath is None:
@@ -595,11 +712,11 @@ def main(args):
             with open(outFilename, 'w') as file:
                 yamlDump(data, file)
 
-        if mixingAttachments or renamingAttachmentFiles:
+        if listingInfo or mixingAttachments or renamingAttachmentFiles:
             attachmentFilenames = os.listdir(attachmentsDir)
             print(f'\nDiscovered {len(attachmentFilenames)} attachment files')
             if len(attachmentFilenames):
-                print(f'Loading attachments...')
+                print(f'Reading attachments...')
                 for filenameIndex, filename in enumerate(attachmentFilenames):
                     filePath = os.path.join(attachmentsDir, filename)
                     try:
@@ -653,7 +770,7 @@ def main(args):
                 print('\nDone loading attachments.')
 
             if mixingAttachments:
-                print('\nGenerating exclusions...')
+                print('\nGenerating exclusion rules...')
                 nameMapArray = data['NameMap']
                 nameMapSet = set(nameMapArray)
 
@@ -664,8 +781,8 @@ def main(args):
                 modelRestrictSymbol = ':'
                 modelRestrictSeparator = ','
 
-                if args.debug:
-                    print('\nProcessing combosToSkip...')
+                if debug:
+                    print('\nReading combosToSkip...')
 
                 def logSkip(combo, baseModels=None, category=None, isExact=False, info=''):
                     if baseModels is None:
@@ -709,15 +826,15 @@ def main(args):
                         frozenCombo = frozenset(newCombo)
                         if isSubset:
                             categoryCombinationSubsetsToSkip[category][frozenCombo] = frozenset(baseModels)
-                            if args.debug:
+                            if debug:
                                 logSkip(frozenCombo, baseModels, category=category)
                         else:
                             categoryCombinationsToSkip[category][frozenCombo] = frozenset(baseModels)
-                            if args.debug:
+                            if debug:
                                 logSkip(frozenCombo, baseModels, isExact=True, category=category)
 
-                if args.debug:
-                    print('\nProcessing mutuallyExclusive...')
+                if debug:
+                    print('\nReading mutuallyExclusive...')
 
                 for category, groups in settings.get('mutuallyExclusive', {}).items():
                     if category not in categoryCombinationSubsetsToSkip:
@@ -735,11 +852,11 @@ def main(args):
                         for duo in combinations(set(attachments), 2):
                             frozenDuo = frozenset(duo)
                             categoryCombinationSubsetsToSkip[category][frozenDuo] = frozenset()
-                            if args.debug:
+                            if debug:
                                 logSkip(frozenDuo, category=category)
 
-                if args.debug:
-                    print('\nProcessing attachmentConflicts...')
+                if debug:
+                    print('\nReading attachmentConflicts...')
 
                 for category, attachmentConflictsMap in settings.get('attachmentConflicts', {}).items():
                     if category not in categoryCombinationSubsetsToSkip:
@@ -755,12 +872,12 @@ def main(args):
                                 checkAttachmentName(category, conflict, f'attachmentConflicts.{category}.{attachment}[{conflictIndex}]')
                                 frozenDuo = frozenset({attachment, conflict})
                                 categoryCombinationSubsetsToSkip[category][frozenDuo] = frozenset()
-                                if args.debug:
+                                if debug:
                                     logSkip(frozenDuo, category=category)
                                 attachmentsSeen.add(conflict)
 
-                if args.debug:
-                    print('\nProcessing equivalentParts...')
+                if debug:
+                    print('\nReading equivalentParts...')
 
                 categoryComboEquivalentMap = {}
                 for category, equivalentCombosMap in settings.get('equivalentParts', {}).items():
@@ -799,18 +916,18 @@ def main(args):
                                             if len(newCombo) > 1:
                                                 frozenCombo = frozenset(combo)
                                                 categoryCombinationSubsetsToSkip[category][frozenCombo] = baseModels
-                                                if args.debug:
+                                                if debug:
                                                     logSkip(frozenCombo, baseModels, category=category)
 
                                     # don't allow combos that contain both an attachment and one or more of its parts
                                     frozenCombo = frozenset({equivalent, part})
                                     categoryCombinationSubsetsToSkip[category][frozenCombo] = frozenset()
-                                    if args.debug:
+                                    if debug:
                                         logSkip(frozenCombo, category=category)
                                     partsSeen.add(part)
 
-                if args.debug:
-                    print('\nProcessing supersetParts...')
+                if debug:
+                    print('\nReading supersetParts...')
 
                 for category, attachmentProperSubsetsMap in settings.get('supersetParts', {}).items():
                     for attachment, properSubsets in attachmentProperSubsetsMap.items():
@@ -838,16 +955,16 @@ def main(args):
                                         if len(newCombo) > 1:
                                             frozenCombo = frozenset(newCombo)
                                             categoryCombinationSubsetsToSkip[category][frozenCombo] = baseModels
-                                            if args.debug:
+                                            if debug:
                                                 logSkip(frozenCombo, baseModels, category=category, info=f"{attachment} ⊃ {part}...{','.join(comboToSkip)}")
 
                                 # don't allow combos that contain both an attachment and one or more of its proper subset parts
                                 frozenCombo = frozenset({attachment, part})
                                 categoryCombinationSubsetsToSkip[category][frozenCombo] = frozenset()
-                                if args.debug:
+                                if debug:
                                     logSkip(frozenCombo, category=category)
 
-                if args.debug:
+                if debug:
                     print('\nExcluding equivalent combos...')
 
                 for category, comboEquivalentMap in categoryComboEquivalentMap.items():
@@ -857,29 +974,30 @@ def main(args):
                     for frozenCombo in comboEquivalentMap.keys():
                         # don't allow combos containing all the parts of an entire equivalent attachment - use the equivalent instead
                         categoryCombinationSubsetsToSkip[category][frozenCombo] = frozenset()
-                        if args.debug:
+                        if debug:
                             logSkip(frozenCombo, category=category)
 
-                print('\nExclusions generated.')
+                print('\nExclusion rules generated.')
 
-                if args.debug:
+                if debug:
                     print('\ncategoryCombinationSubsetsToSkip:')
                     print(f'\n{yamlDump(jsonifyDataRecursive(categoryCombinationSubsetsToSkip))}')
 
                     print('\ncategoryCombinationsToSkip:')
                     print(f'\n{yamlDump(jsonifyDataRecursive(categoryCombinationsToSkip))}')
 
-        if exportingSocketAttachments or mixingAttachments:
+        if listingInfo or exportingSocketAttachments or mixingAttachments:
             exports = data['Exports']
             dataTableExport = findNextItemByType(exports, 'UAssetAPI.ExportTypes.DataTableExport, UAssetAPI')
             models = dataTableExport['Table']['Data']
             modelsCopy = models.copy()
-            models.clear()
-            print(f'\nProcessing {len(modelsCopy)} models...')
+            if mixingAttachments:
+                models.clear()
+            print(f'\nReading {len(modelsCopy)} models...')
             for modelIndex, model in enumerate(modelsCopy):
                 try:
                     modelName = getModelName(model)
-                    print(f'\n{modelIndex + 1} - processing {modelName}...')
+                    print(f'\n{modelIndex + 1} - reading {modelName}...')
 
                     modelValues = getPropertyValue(model)
 
@@ -923,7 +1041,7 @@ def main(args):
                         otherNamesString = '_'.join(otherNames)
                         attachmentNames = otherNamesString.split(importAttachmentsSeparator) if otherNamesString else []
 
-                        if args.debug:
+                        if debug:
                             print(f"Potential attachments names: {', '.join(attachmentNames) if attachmentNames else '(unknown)'}")
 
                         attachmentDisplayNamesString = ''
@@ -933,11 +1051,11 @@ def main(args):
                             if closeParenIndex > -1:
                                 attachmentDisplayNamesString = modelDisplayName[openParenIndex + 1:closeParenIndex]
 
-                        if args.debug:
+                        if debug:
                             print(f'Potential attachments display names string: {attachmentDisplayNamesString}')
 
                         attachmentDisplayNames = attachmentDisplayNamesString.split(', ') if attachmentDisplayNamesString else []
-                        if args.debug:
+                        if debug:
                             print(f"Potential attachments display names: {', '.join(attachmentDisplayNames) if attachmentDisplayNames else '(unknown)'}")
 
                         if (
@@ -956,7 +1074,7 @@ def main(args):
                         if len(attachmentDisplayNames) != len(socketAttachments):
                             attachmentDisplayNames = []
 
-                        if args.debug:
+                        if debug:
                             print(f"Synthesized attachments names: {', '.join(attachmentNames) if attachmentNames else '(unknown)'}")
 
                         if exportingSocketAttachments:
@@ -992,104 +1110,103 @@ def main(args):
                                         yamlDump(attachmentInfo, file)
 
                                     attachmentsCreated.append(filePath)
-                    else:
+                    elif mixingAttachments:
                         models.append(model)
-                        if mixingAttachments:
-                            if categoryName in attachmentsToMix:
-                                modelDisplayNameBase = modelDisplayName
-                                openParenIndex = modelDisplayName.find('(')
-                                if openParenIndex > -1:
-                                    closeParenIndex = modelDisplayName.find(')', openParenIndex + 1)
-                                    if closeParenIndex > -1:
-                                        modelDisplayNameBase = modelDisplayName[:openParenIndex].rstrip()
+                        if categoryName in attachmentsToMix:
+                            modelDisplayNameBase = modelDisplayName
+                            openParenIndex = modelDisplayName.find('(')
+                            if openParenIndex > -1:
+                                closeParenIndex = modelDisplayName.find(')', openParenIndex + 1)
+                                if closeParenIndex > -1:
+                                    modelDisplayNameBase = modelDisplayName[:openParenIndex].rstrip()
 
-                                comboCount = 0
+                            comboCount = 0
 
-                                attachmentsForCategory = attachmentsToMix[categoryName]
-                                print(f'Mixing {len(attachmentsForCategory)} attachments into combinations...')
-                                for r in range(1, len(attachmentsForCategory) + 1):
-                                    # TODO: use names instead of values in combinations()
-                                    for combo in combinations(attachmentsForCategory.values(), r):
-                                        attachmentIds = [a['attachmentId'] for a in combo]
+                            attachmentsForCategory = attachmentsToMix[categoryName]
+                            print(f'Mixing {len(attachmentsForCategory)} attachments into combinations...')
+                            for r in range(1, len(attachmentsForCategory) + 1):
+                                # TODO: use names instead of values in combinations()
+                                for combo in combinations(attachmentsForCategory.values(), r):
+                                    attachmentIds = [a['attachmentId'] for a in combo]
 
-                                        attachmentIdsSet = frozenset(attachmentIds)
+                                    attachmentIdsSet = frozenset(attachmentIds)
 
-                                        shouldSkipCombo = False
-                                        if not shouldSkipCombo:
-                                            baseModels = categoryCombinationsToSkip.get(categoryName, {}).get(attachmentIdsSet, None)
-                                            if baseModels is not None:
-                                                if len(baseModels) == 0 or modelBaseName in baseModels:
-                                                    shouldSkipCombo = True
+                                    shouldSkipCombo = False
+                                    if not shouldSkipCombo:
+                                        baseModels = categoryCombinationsToSkip.get(categoryName, {}).get(attachmentIdsSet, None)
+                                        if baseModels is not None:
+                                            if len(baseModels) == 0 or modelBaseName in baseModels:
+                                                shouldSkipCombo = True
 
-                                        if not shouldSkipCombo:
-                                            for combosToSkip, baseModels in categoryCombinationSubsetsToSkip.get(categoryName, {}).items():
-                                                if (len(baseModels) == 0 or modelBaseName in baseModels) and combosToSkip <= attachmentIdsSet:
-                                                    shouldSkipCombo = True
-                                                    break
+                                    if not shouldSkipCombo:
+                                        for combosToSkip, baseModels in categoryCombinationSubsetsToSkip.get(categoryName, {}).items():
+                                            if (len(baseModels) == 0 or modelBaseName in baseModels) and combosToSkip <= attachmentIdsSet:
+                                                shouldSkipCombo = True
+                                                break
 
-                                        if shouldSkipCombo:
-                                            if modelBaseName not in combinationsSkipped:
-                                                combinationsSkipped[modelBaseName] = {}
-                                            if categoryName not in combinationsSkipped[modelBaseName]:
-                                                combinationsSkipped[modelBaseName][categoryName] = set()
-                                            combinationsSkipped[modelBaseName][categoryName].add(attachmentIdsSet)
-                                            continue
+                                    if shouldSkipCombo:
+                                        if modelBaseName not in combinationsSkipped:
+                                            combinationsSkipped[modelBaseName] = {}
+                                        if categoryName not in combinationsSkipped[modelBaseName]:
+                                            combinationsSkipped[modelBaseName][categoryName] = set()
+                                        combinationsSkipped[modelBaseName][categoryName].add(attachmentIdsSet)
+                                        continue
 
-                                        if modelBaseName not in combinationsAdded:
-                                            combinationsAdded[modelBaseName] = {}
-                                        if categoryName not in combinationsAdded[modelBaseName]:
-                                            combinationsAdded[modelBaseName][categoryName] = set()
-                                        combinationsAdded[modelBaseName][categoryName].add(attachmentIdsSet)
-                                        comboCount += 1
+                                    if modelBaseName not in combinationsAdded:
+                                        combinationsAdded[modelBaseName] = {}
+                                    if categoryName not in combinationsAdded[modelBaseName]:
+                                        combinationsAdded[modelBaseName][categoryName] = set()
+                                    combinationsAdded[modelBaseName][categoryName].add(attachmentIdsSet)
+                                    comboCount += 1
 
-                                        attachmentNamesString = exportAttachmentsSeparator.join(attachmentIds)
-                                        attachmentDisplayNamesString = ', '.join([a['displayName'] for a in combo])
-                                        newModelDisplayName = f'{modelDisplayNameBase} ({attachmentDisplayNamesString})'
-                                        # TODO: need this?
-                                        if True:
-                                            attachmentNamesHashed = md5Hash(attachmentNamesString).upper()
-                                            newModelId = f'{modelBaseName}_{shortCategoryName}_{attachmentNamesHashed}'
-                                        else:
-                                            # TODO: use UUID instead?
-                                            newModelId = f'{modelBaseName}_{shortCategoryName}_{attachmentNamesString}'
-                                        # TODO: warn if this ID has already been used
-                                        print(f"Making combo: {', '.join(attachmentIds)}")
-                                        newModel = copy.deepcopy(model)
-                                        newModelValues = getPropertyValue(newModel)
-                                        newModelIdProp = getModelIdProperty(newModelValues)
-                                        setPropertyValue(newModelIdProp, newModelId)
-                                        setModelName(newModel, newModelId)
+                                    attachmentNamesString = exportAttachmentsSeparator.join(attachmentIds)
+                                    attachmentDisplayNamesString = ', '.join([a['displayName'] for a in combo])
+                                    newModelDisplayName = f'{modelDisplayNameBase} ({attachmentDisplayNamesString})'
+                                    # TODO: need this?
+                                    if True:
+                                        attachmentNamesHashed = md5Hash(attachmentNamesString).upper()
+                                        newModelId = f'{modelBaseName}_{shortCategoryName}_{attachmentNamesHashed}'
+                                    else:
+                                        # TODO: use UUID instead?
+                                        newModelId = f'{modelBaseName}_{shortCategoryName}_{attachmentNamesString}'
+                                    # TODO: warn if this ID has already been used
+                                    print(f"Making combo: {', '.join(attachmentIds)}")
+                                    newModel = copy.deepcopy(model)
+                                    newModelValues = getPropertyValue(newModel)
+                                    newModelIdProp = getModelIdProperty(newModelValues)
+                                    setPropertyValue(newModelIdProp, newModelId)
+                                    setModelName(newModel, newModelId)
 
-                                        newUiDataValues = getUiDataValues(newModelValues)
+                                    newUiDataValues = getUiDataValues(newModelValues)
 
-                                        newModelDisplayNameProp = getModelDisplayNameProperty(newUiDataValues)
-                                        newModelDisplayNameProp[ModelDisplayNamePropNameFieldName] = newModelDisplayName
+                                    newModelDisplayNameProp = getModelDisplayNameProperty(newUiDataValues)
+                                    newModelDisplayNameProp[ModelDisplayNamePropNameFieldName] = newModelDisplayName
 
-                                        if False:
-                                            newModelDisplayNameProp[ValueFieldName] = generateRandomHexString(32).upper()
-                                        elif False:
-                                            # TODO: use same algorithm UE4 uses - this is not identical, but it seems to do the trick anyway
-                                            newModelDisplayNameProp[ValueFieldName] = sha256Hash(newModelDisplayName.lower()).upper()
-                                        else:
-                                            newModelDisplayNameProp[ValueFieldName] = md5Hash(newModelDisplayName.lower()).upper()
+                                    if False:
+                                        newModelDisplayNameProp[ValueFieldName] = generateRandomHexString(32).upper()
+                                    elif False:
+                                        # TODO: use same algorithm UE4 uses - this is not identical, but it seems to do the trick anyway
+                                        newModelDisplayNameProp[ValueFieldName] = sha256Hash(newModelDisplayName.lower()).upper()
+                                    else:
+                                        newModelDisplayNameProp[ValueFieldName] = md5Hash(newModelDisplayName.lower()).upper()
 
-                                        newSocketAttachmentsStruct = findSocketAttachmentsStruct(newModelValues)
-                                        newSocketAttachmentsStruct.pop('DummyStruct', None)
-                                        newSocketAttachments = getPropertyValue(newSocketAttachmentsStruct)
+                                    newSocketAttachmentsStruct = findSocketAttachmentsStruct(newModelValues)
+                                    newSocketAttachmentsStruct.pop('DummyStruct', None)
+                                    newSocketAttachments = getPropertyValue(newSocketAttachmentsStruct)
 
-                                        for attachment in combo:
-                                            newSocketAttachments.append(attachment['attachmentData'])
-                                            # TODO: remove
-                                            if False:
-                                                addAllToNameMap(attachment['attachmentData'], nameMapSet)
-
-                                        # TODO: alter model icons and descriptions if specified
-
-                                        models.append(newModel)
+                                    for attachment in combo:
+                                        newSocketAttachments.append(attachment['attachmentData'])
                                         # TODO: remove
                                         if False:
-                                            nameMapSet.add(newModelId)
-                                print(f'Created {comboCount} combos')
+                                            addAllToNameMap(attachment['attachmentData'], nameMapSet)
+
+                                    # TODO: alter model icons and descriptions if specified
+
+                                    models.append(newModel)
+                                    # TODO: remove
+                                    if False:
+                                        nameMapSet.add(newModelId)
+                            print(f'Created {comboCount} combos')
                 except Exception as e:
                     printError(e)
                     exitCode = 1
@@ -1132,11 +1249,11 @@ def main(args):
                 nameMapNamesRemoved = nameMapSetOld - nameMapSet
                 nameMapNamesAdded = nameMapSet - nameMapSetOld
 
-                if args.debug:
+                if debug:
                     print(f'\nNameMap names removed:')
                     print(yamlDump(jsonifyDataRecursive(nameMapNamesRemoved)))
 
-                if args.debug:
+                if debug:
                     print(f'\nNameMap names added:')
                     print(yamlDump(jsonifyDataRecursive(nameMapNamesAdded)))
 
@@ -1155,8 +1272,8 @@ def main(args):
         printError(f'{customizationItemDbPath} does not exist')
         exitCode = 1
 
-    outputInfoFilename = f"{settingsFilePath.removesuffix('.yaml')}-results.yaml"
-    print(f'\nWriting command output to {outputInfoFilename}')
+    outputInfoFilename = getResultsFilePath(settingsFilePath)
+    print(f'\nWriting command results to {outputInfoFilename}')
 
     outputInfo = {
         'errors': errors,
@@ -1192,12 +1309,18 @@ DbdSocketsMixer reads that JSON file and writes an altered version that
 can be converted back to the original uasset file using UAssetGUI.
         ''',
     )
+    defaultSettingsPath = 'settings.yaml'
     parser.add_argument(
         'settingsFilePath',
-        help='path to settings YAML file (if not specified, default settings.yaml will be created)',
+        help=f'path to settings YAML file (defaults to `{defaultSettingsPath}`)',
         type=str,
-        default='settings.yaml',
+        default=defaultSettingsPath,
         nargs='?',
+    )
+    parser.add_argument(
+        '--list',
+        help='list attachments and models',
+        action='store_true',
     )
     parser.add_argument(
         '--extract',
@@ -1206,7 +1329,7 @@ can be converted back to the original uasset file using UAssetGUI.
     )
     parser.add_argument(
         '--create',
-        help='create a socket attachment definition interactively',
+        help='create socket attachment definitions interactively',
         action='store_true',
     )
     parser.add_argument(
@@ -1220,6 +1343,11 @@ can be converted back to the original uasset file using UAssetGUI.
         action='store_true',
     )
     parser.add_argument(
+        '-ni',
+        help='run in non-interactive mode',
+        action='store_true',
+    )
+    parser.add_argument(
         '--debug',
         help='output extra debug info to the console',
         action='store_true',
@@ -1230,4 +1358,207 @@ can be converted back to the original uasset file using UAssetGUI.
         version=f'%(prog)s {__version__}',
     )
     args = parser.parse_args()
-    sys.exit(main(args))
+
+    if args.ni:
+        print('Running in non-interactive mode.')
+
+    exitCode = 0
+
+    if (
+        not args.list
+        and not args.extract
+        and not args.create
+        and not args.rename
+        and not args.mix
+        and not args.ni
+    ):
+        print('Welcome to DbdSocketsMixer!')
+
+        settingsFilePath = args.settingsFilePath
+        debug = args.debug
+
+        actionsMap = {action.dest: action for action in parser._actions}
+
+        commandNames = [c for c in actionsMap.keys() if c not in {'ni'}]
+        commandNames.insert(commandNames.index('list') + 1, 'folder')
+        commandNames.insert(commandNames.index('folder') + 1, 'editSettings')
+        commandNames.insert(commandNames.index('editSettings') + 1, 'results')
+        commandNames.append('quit')
+        commandMap = {c: { 'name': c, 'number': i + 1, 'action': actionsMap.get(c, None) } for i, c in enumerate(commandNames)}
+        commandNumberMap = {str(c['number']): c for c in commandMap.values()}
+
+        while True:
+            listingInfo = False
+            creating = False
+            extracting = False
+            renaming = False
+            mixing = False
+
+            exitCode = 0
+
+            print()
+
+            print(f"Settings file: {settingsFilePath or '<Not specified>'}")
+            print(f"Debug mode: {'on' if debug else 'off'}")
+
+            print()
+
+            for commandName in commandNames:
+                command = commandMap[commandName]
+                if commandName == 'help':
+                    help = 'show help page'
+                elif commandName == 'version':
+                    help = "show program version"
+                elif commandName == 'settingsFilePath':
+                    help = f"{'change' if settingsFilePath else 'set'} {command['action'].help}"
+                elif commandName == 'quit':
+                    help = "quit program"
+                elif commandName == 'debug':
+                    help = f"turn {'off' if debug else 'on'} debug flag ({'do not ' if debug else ''}{command['action'].help})"
+                elif commandName == 'folder':
+                    help = f'open settings folder in explorer'
+                elif commandName == 'editSettings':
+                    help = f'open settings in editor'
+                elif commandName == 'results':
+                    help = f'open command results in editor'
+                elif command['action'] is not None:
+                    help = command['action'].help
+                else:
+                    help = commandName
+
+                print(f"[ {command['number']} ] {commandName[0].upper()}{commandName[1:]} - {help}")
+
+            shouldPromptToContinue = False
+
+            response = input('\nSelection: ').strip()
+            command = None
+            try:
+                command = commandNumberMap[response]
+            except:
+                try:
+                    if response:
+                        responseUpper = response.upper()
+                        commandMatches = [c for c in commandMap.values() if c['name'].upper().startswith(responseUpper)]
+                        if len(commandMatches) == 0:
+                            raise ValueError()
+
+                        if len(commandMatches) == 1:
+                            command = commandMatches[0]
+                        else:
+                            eprint(f"\nAmbiguous command prefix ({'|'.join([c['name'] for c in commandMatches])}). Needs more characters.")
+                            shouldPromptToContinue = True
+                except:
+                    eprint('\nInvalid option.')
+                    shouldPromptToContinue = True
+
+            if command is not None:
+                print()
+
+                shouldRunMain = False
+
+                commandName = command['name']
+
+                if commandName == 'help':
+                    print(parser.format_help())
+                    shouldPromptToContinue = True
+                elif commandName == 'version':
+                    print(f'Version: {parser.prog} {__version__}')
+                    shouldPromptToContinue = True
+                elif commandName == 'quit':
+                    break
+                elif commandName == 'settingsFilePath':
+                    settingsFilePath = input('Settings YAML file path: ')
+                    if not settingsFilePath.strip():
+                        settingsFilePath = defaultSettingsPath
+                        print(f'\n(using default)')
+
+                    print(f'\nSettings path set to: {settingsFilePath}')
+                    shouldPromptToContinue = True
+                elif commandName == 'debug':
+                    debug = not debug
+                    print(f"Turned debug flag {'on' if debug else 'off'}")
+                    shouldPromptToContinue = True
+                elif commandName == 'folder':
+                    shouldPromptToContinue = False
+                    if platform.system() != 'Windows':
+                        eprint('Only supported on Windows')
+                        shouldPromptToContinue = True
+                    else:
+                        if os.path.isabs(settingsFilePath):
+                            absolutePath = settingsFilePath
+                        else:
+                            absolutePath = pathlib.Path(os.path.join('./', settingsFilePath)).resolve()
+
+                        settingsDir = os.path.dirname(absolutePath)
+                        print(f'Opening {settingsDir}')
+                        try:
+                            os.system(f'start explorer "{settingsDir}"')
+                        except Exception as e:
+                            eprint()
+                            eprint(e)
+                            eprint()
+                            shouldPromptToContinue = True
+                elif commandName == 'editSettings':
+                    shouldPromptToContinue = False
+                    if not openFile(settingsFilePath):
+                        eprint('ERROR: could not open file')
+                        shouldPromptToContinue = True
+                elif commandName == 'results':
+                    shouldPromptToContinue = False
+                    filePath = getResultsFilePath(settingsFilePath)
+                    if not openFile(filePath):
+                        eprint('ERROR: could not open file')
+                        shouldPromptToContinue = True
+                elif commandName == 'list':
+                    listingInfo = True
+                    shouldRunMain = True
+                elif commandName == 'extract':
+                    extracting = True
+                    shouldRunMain = True
+                elif commandName == 'create':
+                    creating = True
+                    shouldRunMain = True
+                elif commandName == 'rename':
+                    renaming = True
+                    shouldRunMain = True
+                elif commandName == 'mix':
+                    mixing = True
+                    shouldRunMain = True
+                else:
+                    print('Not yet implemented.')
+
+                if shouldRunMain:
+                    exitCode = main(
+                        settingsFilePath,
+                        listingInfo,
+                        creating,
+                        extracting,
+                        renaming,
+                        mixing,
+                        False,
+                        debug,
+                    )
+                    shouldPromptToContinue = True
+
+            if shouldPromptToContinue:
+                input('\nPress Enter to continue...')
+
+            print('\n--------------------------')
+    else:
+        exitCode = main(
+            args.settingsFilePath,
+            args.list,
+            args.create,
+            args.extract,
+            args.rename,
+            args.mix,
+            args.ni,
+            args.debug,
+        )
+
+    # TODO: remove
+    if False:
+        if not len(sys.argv) > 1:
+            print(f'\nrun `{parser.prog} -h` for more options and usage.\n')
+
+    sys.exit(exitCode)
