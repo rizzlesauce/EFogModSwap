@@ -19,7 +19,7 @@ import platform
 import Attachment
 
 __author__ = 'Ross Adamson'
-__version__ = '0.1.2'
+__version__ = '0.1.3'
 __license__ = 'MIT'
 
 ItemTypeName = '$type'
