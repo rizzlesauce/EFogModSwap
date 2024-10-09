@@ -6,3 +6,4 @@
 /dist
 /*.spec
 /__pycache__
+*.exe
