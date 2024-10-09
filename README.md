@@ -1,6 +1,6 @@
 # DbdSocketsMixer
 
-<img width="866" alt="image" src="https://github.com/user-attachments/assets/be5f637c-4246-4a71-aeac-cbc03672dcae">
+<img width="863" alt="image" src="https://github.com/user-attachments/assets/2c9ee26d-4481-4cd1-9937-a02d012b9b89">
 
 A CLI that mixes DBD socket attachment combinations with character models into custom slots.
 
