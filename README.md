@@ -1,5 +1,7 @@
 # DbdSocketsMixer
 
+<img width="866" alt="image" src="https://github.com/user-attachments/assets/be5f637c-4246-4a71-aeac-cbc03672dcae">
+
 A CLI that mixes DBD socket attachment combinations with character models into custom slots.
 
 It can also extract socket attachment definitions from CustomizationItemDB JSON files and
