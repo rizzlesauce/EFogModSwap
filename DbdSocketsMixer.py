@@ -320,6 +320,9 @@ def addAllToNameMap(value, nameMapSet, path=''):
 def getResultsFilePath(settingsFilePath):
     return f"{settingsFilePath.removesuffix('.yaml')}-results.yaml"
 
+def getAttachmentDisplayName(attachment):
+    return attachment['displayName'] or attachment['attachmentId']
+
 def getSettingsTemplate():
     return '''# settings file for DbdSocketsMixer
 
@@ -610,8 +613,9 @@ def main(
                 while not attachment['displayName']:
                     attachment['displayName'] = input('Display name: ')
                     if not attachment['displayName'].strip():
-                        if confirmCanceled():
-                            break
+                        # allow it to be empty
+                        attachment['displayName'] = ''
+                        break
 
                 if canceled:
                     break
@@ -1158,9 +1162,8 @@ def main(
                                     comboCount += 1
 
                                     attachmentNamesString = exportAttachmentsSeparator.join(attachmentIds)
-                                    attachmentDisplayNamesString = ', '.join([a['displayName'] for a in combo])
+                                    attachmentDisplayNamesString = ', '.join([getAttachmentDisplayName(a) for a in combo])
                                     newModelDisplayName = f'{modelDisplayNameBase} ({attachmentDisplayNamesString})'
-                                    # TODO: need this?
                                     if True:
                                         attachmentNamesHashed = md5Hash(attachmentNamesString).upper()
                                         newModelId = f'{modelBaseName}_{shortCategoryName}_{attachmentNamesHashed}'
