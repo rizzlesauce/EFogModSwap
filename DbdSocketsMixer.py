@@ -759,7 +759,7 @@ def main(
                     if canceled:
                         break
 
-                    print(f'Writing to {filePath}')
+                    print(f'Writing to "{filePath}"')
                     if allowWrite(filePath):
                         with open(filePath, 'w') as file:
                             yamlDump(attachment, file)
@@ -816,7 +816,7 @@ def main(
                 settingsDir,
                 f"{settingsPathInfo['stem']}_{customizationItemDbPathInfo['stem']}-unaltered.yaml",
             )
-            print(f'\nWriting unaltered CustomizationItemDB to {outPath}')
+            print(f'\nWriting unaltered CustomizationItemDB to "{outPath}"')
             if allowWrite(outPath):
                 with open(outPath, 'w') as file:
                     yamlDump(data, file)
@@ -1367,14 +1367,14 @@ def main(
                         settingsDir,
                         f"{settingsPathInfo['stem']}_{customizationItemDbPathInfo['stem']}-altered.json",
                     )
-                    print(f'\nWriting altered CustomizationItemDB to {jsonOutPath}')
+                    print(f'\nWriting altered CustomizationItemDB to "{jsonOutPath}"')
                     if allowWrite(jsonOutPath):
                         with open(jsonOutPath, 'w') as file:
                             jsonDump(data, file)
                         print('Done.')
 
                     if customizationItemDbPathInfo['suffixLower'] == '.uasset':
-                        print(f'\nWriting altered CustomizationItemDB to {customizationItemDbPath}')
+                        print(f'\nWriting altered CustomizationItemDB to "{customizationItemDbPath}"')
                         if allowWrite(customizationItemDbPath):
                             jsonToUasset(jsonOutPath, customizationItemDbPath, uassetGuiPath)
                             print('Done.')
@@ -1385,7 +1385,7 @@ def main(
                             settingsDir,
                             f"{settingsPathInfo['stem']}_{customizationItemDbPathInfo['stem']}-altered.yaml",
                         )
-                        print(f'\nWriting altered CustomizationItemDB to {yamlOutPath}')
+                        print(f'\nWriting altered CustomizationItemDB to "{yamlOutPath}"')
                         if allowWrite(yamlOutPath):
                             with open(yamlOutPath, 'w') as file:
                                 yamlDump(data, file)
@@ -1409,7 +1409,7 @@ def main(
     }
 
     outputInfoFilename = getResultsFilePath(settingsFilePath)
-    print(f'\nWriting command results to {outputInfoFilename}')
+    print(f'\nWriting command results to "{outputInfoFilename}"')
     if allowWrite(outputInfoFilename):
         with open(outputInfoFilename, 'w') as file:
             yamlDump(jsonifyDataRecursive(outputInfo), file)
