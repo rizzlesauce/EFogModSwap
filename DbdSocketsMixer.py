@@ -16,6 +16,7 @@ from contextlib import contextmanager
 import pathlib
 import webbrowser
 import platform
+import subprocess
 import Attachment
 
 __author__ = 'Ross Adamson'
@@ -331,8 +332,9 @@ import: []
 #import:
 #- settings_all_relations.yaml
 
-# CustomizationItemDB.json for your custom slot outfit/models (exported from UAssetGUI -- name it whatever you want)
-customizationItemDbPath: CustomizationItemDB.json
+# CustomizationItemDB for your custom slot outfit/models. This can either be a `.uasset` file,
+# or a `.json` file saved by UAssetGUI.
+customizationItemDbPath: CustomizationItemDB.uasset
 
 # The path to the directory where socket attachment definition yaml files are stored
 attachmentsDir: attachments
@@ -454,6 +456,54 @@ combosToSkip:
     - KateGoldNecklaceNoRing
 '''
 
+def getPathInfo(path, relativeDir='./'):
+    result = {
+        'absolute': '',
+        'dir': '',
+        'stem': '',
+        'suffix': '',
+        'suffixLower': '',
+    }
+
+    if os.path.isabs(path):
+        result['absolute'] = path
+    else:
+        result['absolute'] = pathlib.Path(os.path.join(relativeDir, path)).resolve()
+
+    result['dir'] = os.path.dirname(result['absolute'])
+    result['stem'] = pathlib.Path(path).stem
+    result['suffix'] = pathlib.Path(path).suffix
+    result['suffixLower'] = result['suffix'].lower()
+
+    return result
+
+def runCall(args):
+    if subprocess.call(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True):
+        quoted = [f'"{arg}"' for arg in args]
+        raise ValueError(f"subprocess call failed: {' '.join(quoted)}")
+
+def jsonToUasset(jsonPath, uassetPath, uassetGuiPath):
+    runCall([uassetGuiPath, 'fromjson', jsonPath, uassetPath])
+
+def uassetToJson(uassetPath, jsonPath, uassetGuiPath):
+    runCall([uassetGuiPath, 'tojson', uassetPath, jsonPath, 'VER_UE4_25'])
+
+def confirm(action, emptyMeansNo=None):
+    while True:
+        result = input(f'{action[0].upper()}{action[1:]} (Y/n)? ').strip()
+        if result.upper() == 'Y':
+            confirmed = True
+            break
+
+        if result.upper() == 'N' or (not result and emptyMeansNo is True):
+            confirmed = False
+            break
+
+    return confirmed
+
+def confirmOverwrite(target):
+    return confirm(f'overwrite "{target}"')
+
 def main(
     settingsFilePath,
     listingInfo,
@@ -463,6 +513,7 @@ def main(
     mixingAttachments,
     nonInteractive,
     debug,
+    uassetGuiPath,
 ):
     """ Main entry point of the app """
 
@@ -506,16 +557,45 @@ def main(
     nameMapSet = set(nameMapArray)
     attachmentsRenamed = {}
 
+    overwriteOverride = None
+
+    def allowWrite(path):
+        if not os.path.exists(path):
+            return True
+
+        shouldWarn = True
+
+        if overwriteOverride is not None:
+            result = overwriteOverride
+        elif nonInteractive:
+            result = False
+        else:
+            print()
+            result = confirmOverwrite(path)
+            print()
+            shouldWarn = False
+
+        if shouldWarn:
+            if result:
+                printWarning(f'Overwriting "{path}"', newline=True)
+            else:
+                printWarning(f'Skipping write of "{path}" (overwrite not allowed)', newline=True)
+
+        return result
+
     def checkAttachmentName(category, attachmentName, otherInfo=None):
         if attachmentName not in attachmentsToMix.get(category, {}):
             printWarning(f"reference to missing attachment: {category}::{attachmentName}{' (' if otherInfo else ''}{otherInfo or ''}{')' if otherInfo else ''}", newline=True)
 
-    if not os.path.isfile(settingsFilePath):
+    if not os.path.exists(settingsFilePath):
         printWarning(f'Settings file ({settingsFilePath}) does not exist. Creating it now with default content.')
         if printingYaml:
             print(getSettingsTemplate())
         with open(settingsFilePath, 'w') as file:
             file.write(getSettingsTemplate())
+
+    settingsPathInfo = getPathInfo(settingsFilePath)
+    settingsDir = settingsPathInfo['dir']
 
     def mergeSettings(parentData, childData):
         for key, value in childData.items():
@@ -529,7 +609,7 @@ def main(
 
         print(f'Reading settings from {filePath}')
         if not os.path.isfile(filePath):
-            printError(f'Could not read settings from {filePath} (file not found)')
+            printError(f'Could not read settings from {filePath} (file not found)', newline=True)
             exitCode = 1
             return None
 
@@ -552,16 +632,16 @@ def main(
     attachmentsDir = settings.get('attachmentsDir', None)
     if attachmentsDir is None:
         defaultAttachmentsDir = 'attachments'
-        printWarning(f'`attachmentsDir` not specified. Defaulting to: {defaultAttachmentsDir}')
+        printWarning(f'`attachmentsDir` not specified. Defaulting to: {defaultAttachmentsDir}', newline=True)
         attachmentsDir = defaultAttachmentsDir
 
     if not os.path.exists(attachmentsDir):
-        printWarning(f'`attachmentsDir` ({attachmentsDir}) does not exist. Creating it now.')
+        printWarning(f'`attachmentsDir` ({attachmentsDir}) does not exist. Creating it now.', newline=True)
         os.makedirs(attachmentsDir, exist_ok=True)
 
     if creating:
         if nonInteractive:
-            printWarning('Cannot create attachment definition in non-interactive mode')
+            printWarning('Cannot create attachment definition in non-interactive mode', newline=True)
         else:
             done = False
             canceled = False
@@ -577,8 +657,8 @@ def main(
                 attachment['modelCategory'] = ''
                 categoryOptions = {'SurvivorTorso', 'SurvivorLegs', 'SurvivorHead'}
                 while not attachment['modelCategory']:
-                    attachment['modelCategory'] = input(f"Model category ({', '.join(categoryOptions)}): ")
-                    if not attachment['modelCategory'].strip():
+                    attachment['modelCategory'] = input(f"Model category ({', '.join(categoryOptions)}): ").strip()
+                    if not attachment['modelCategory']:
                         if confirmCanceled():
                             break
                         else:
@@ -593,8 +673,8 @@ def main(
 
                 attachment['attachmentId'] = ''
                 while not attachment['attachmentId']:
-                    attachment['attachmentId'] = input('Attachment ID: ')
-                    if not attachment['attachmentId'].strip():
+                    attachment['attachmentId'] = input('Attachment ID: ').strip()
+                    if not attachment['attachmentId']:
                         if confirmCanceled():
                             break
                         else:
@@ -611,10 +691,9 @@ def main(
 
                 attachment['displayName'] = ''
                 while not attachment['displayName']:
-                    attachment['displayName'] = input('Display name: ')
-                    if not attachment['displayName'].strip():
-                        # allow it to be empty
-                        attachment['displayName'] = ''
+                    attachment['displayName'] = input('Display name: ').strip()
+                    if not attachment['displayName']:
+                        #  allow it to be empty
                         break
 
                 if canceled:
@@ -635,8 +714,8 @@ def main(
                 assetPath = getPropertyValue(blueprintAttachment)['AssetPath']
                 assetPath['AssetName'] = ''
                 while not assetPath['AssetName']:
-                    assetPath['AssetName'] = input('Blueprint path: ')
-                    if not assetPath['AssetName'].strip():
+                    assetPath['AssetName'] = input('Blueprint path: ').strip()
+                    if not assetPath['AssetName']:
                         if confirmCanceled():
                             break
                         else:
@@ -677,12 +756,12 @@ def main(
                     break
 
                 print(f'Writing to {filePath}')
-                with open(filePath, 'w') as file:
-                    yamlDump(attachment, file)
-                print('done.')
+                if allowWrite(filePath):
+                    with open(filePath, 'w') as file:
+                        yamlDump(attachment, file)
+                    print('done.')
 
-                response = input('Add another (Y/n)?')
-                if response.lower() == 'n' or not response:
+                if not confirm('add another', emptyMeansNo=True):
                     done = True
 
             if canceled:
@@ -692,12 +771,29 @@ def main(
     if customizationItemDbPath is None:
         customizationItemDbPath = 'CustomizationItemDB.json'
         printWarning(f'`customizationItemDbPath` not specified. defaulting to: {customizationItemDbPath}', newline=True)
-    customizationItemDbPathNoExtension = customizationItemDbPath.removesuffix('.json')
-    if os.path.isfile(customizationItemDbPath):
+    customizationItemDbPathInfo = getPathInfo(customizationItemDbPath)
+    customizationItemDbSupportedFileTypes = ['.json', '.uasset']
+    if customizationItemDbPathInfo['suffixLower'] not in customizationItemDbSupportedFileTypes:
+        printError(f'Unsupported file extension for {customizationItemDbPath}: must be one of ({", ".join(customizationItemDbSupportedFileTypes)})', newline=True)
+        exitCode = 1
+    elif os.path.isfile(customizationItemDbPath):
+        if customizationItemDbPathInfo['suffixLower'] == '.json':
+            customizationItemDbJsonPath = customizationItemDbPath
+        elif customizationItemDbPathInfo['suffixLower'] == '.uasset':
+            customizationItemDbJsonPath = os.path.join(
+                settingsPathInfo['dir'],
+                f"{settingsPathInfo['stem']}_{customizationItemDbPathInfo['stem']}-unaltered.json",
+            )
+            print(f'\nConverting "{customizationItemDbPath}" to JSON, writing "{customizationItemDbJsonPath}"')
+            if allowWrite(customizationItemDbJsonPath):
+                uassetToJson(customizationItemDbPath, customizationItemDbJsonPath, uassetGuiPath)
+                print('Done converting.')
+        else:
+            raise ValueError()
+
         with oneLinePrinter() as oneLinePrint:
-            oneLinePrint(f'Reading CustomizationItemDB from {customizationItemDbPath}...')
-            with open(customizationItemDbPath, 'r') as file:
-                # TODO: also handle yaml and uasset file types
+            oneLinePrint(f'\nReading CustomizationItemDB JSON from {customizationItemDbJsonPath}...')
+            with open(customizationItemDbJsonPath, 'r') as file:
                 data = json.load(file)
             oneLinePrint('done.')
 
@@ -710,11 +806,14 @@ def main(
             print(yamlDump(data))
 
         if writingUnalteredDb:
-            # TODO: prevent overwrite if already exists?
-            outFilename = f'{customizationItemDbPathNoExtension}-unaltered.yaml'
-            print(f'\nWriting unaltered CustomizationItemDB to {outFilename}')
-            with open(outFilename, 'w') as file:
-                yamlDump(data, file)
+            outPath = os.path.join(
+                settingsDir,
+                f"{settingsPathInfo['stem']}_{customizationItemDbPathInfo['stem']}-unaltered.yaml",
+            )
+            print(f'\nWriting unaltered CustomizationItemDB to {outPath}')
+            if allowWrite(outPath):
+                with open(outPath, 'w') as file:
+                    yamlDump(data, file)
 
         if listingInfo or mixingAttachments or renamingAttachmentFiles:
             attachmentFilenames = os.listdir(attachmentsDir)
@@ -763,13 +862,13 @@ def main(
                                     print(f'Renaming {filename} to {newFilename}')
                                     newFilePath = os.path.join(attachmentsDir, newFilename)
                                     if os.path.exists(newFilePath):
-                                        printError(f'Could not rename {filename} to {newFilename} (file already exists)!')
+                                        printError(f'Could not rename {filename} to {newFilename} (file already exists)!', newline=True)
                                         exitCode = 1
                                     else:
                                         os.rename(filePath, newFilePath)
                                         attachmentsRenamed[filename] = newFilename
                     except Exception as e:
-                        printError(e)
+                        printError(e, newline=True)
                         exitCode = 1
                 print('\nDone loading attachments.')
 
@@ -846,7 +945,7 @@ def main(
                         attachmentsSeen = set()
                         for attachmentIndex, attachment in enumerate(attachments):
                             if attachment in attachmentsSeen:
-                                printWarning(f'duplicate attachment ID (mutuallyExclusive.{category}[{groupIndex}][{attachmentIndex}])')
+                                printWarning(f'duplicate attachment ID (mutuallyExclusive.{category}[{groupIndex}][{attachmentIndex}])', newline=True)
                             else:
                                 checkAttachmentName(category, attachment, f'mutuallyExclusive.{category}[{groupIndex}][{attachmentIndex}]')
                                 attachmentsSeen.add(attachment)
@@ -869,7 +968,7 @@ def main(
                         attachmentsSeen = {attachment}
                         for conflictIndex, conflict in enumerate(conflicts):
                             if conflict in attachmentsSeen:
-                                printWarning(f'duplicate attachment ID (attachmentConflicts.{category}.{attachment}[{conflictIndex}])')
+                                printWarning(f'duplicate attachment ID (attachmentConflicts.{category}.{attachment}[{conflictIndex}])', newline=True)
                             else:
                                 checkAttachmentName(category, conflict, f'attachmentConflicts.{category}.{attachment}[{conflictIndex}]')
                                 frozenDuo = frozenset({attachment, conflict})
@@ -893,7 +992,7 @@ def main(
                         for groupIndex, parts in enumerate(groups):
                             frozenParts = frozenset(parts)
                             if frozenParts in comboEquivalentMap:
-                                printWarning(f'duplicate group (equivalentParts.{category}.{equivalent}[{groupIndex}])')
+                                printWarning(f'duplicate group (equivalentParts.{category}.{equivalent}[{groupIndex}])', newline=True)
                                 continue
 
                             # TODO: allow group to map to multiple equivalents?
@@ -905,7 +1004,7 @@ def main(
                             partsSeen = set()
                             for partIndex, part in enumerate(parts):
                                 if part in partsSeen:
-                                    printWarning(f'duplicate part (equivalentParts.{equivalent}[{groupIndex}][{partIndex}])')
+                                    printWarning(f'duplicate part (equivalentParts.{equivalent}[{groupIndex}][{partIndex}])', newline=True)
                                 else:
                                     checkAttachmentName(category, part, f'equivalentParts.{equivalent}[{groupIndex}][{partIndex}]')
                                     for comboToSkip, baseModels in [(k, v) for k, v in categoryCombinationSubsetsToSkip[category].items()]:
@@ -1006,7 +1105,7 @@ def main(
                     modelIdProp = getModelIdProperty(modelValues)
                     modelId = getPropertyValue(modelIdProp)
                     if modelId != modelName:
-                        printWarning(f'ID ({modelId}) does not match model name ({modelName})')
+                        printWarning(f'ID ({modelId}) does not match model name ({modelName})', newline=True)
 
                     modelNameParts = modelName.split('_')
                     modelBaseName = modelNameParts.pop(0)
@@ -1097,7 +1196,7 @@ def main(
                                 filePath = os.path.join(attachmentsDir, filename)
 
                                 if os.path.exists(filePath):
-                                    printWarning(f'Skipping attachment {attachmentIndex + 1} (file already exists): {filePath}')
+                                    printWarning(f'Skipping attachment {attachmentIndex + 1} (file already exists): {filePath}', newline=True)
                                 else:
                                     print(f'Exporting attachment {attachmentIndex + 1}: {attachmentId} ({attachmentDisplayName}) to {filePath}')
 
@@ -1209,7 +1308,7 @@ def main(
                                         nameMapSet.add(newModelId)
                             print(f'Created {comboCount} combos')
                 except Exception as e:
-                    printError(e)
+                    printError(e, newline=True)
                     exitCode = 1
 
             print('\nModels processed.')
@@ -1259,22 +1358,36 @@ def main(
                     print(yamlDump(jsonifyDataRecursive(nameMapNamesAdded)))
 
                 if writingAlteredDb:
-                    outFilename = f'{customizationItemDbPathNoExtension}-altered.json'
-                    print(f'\nWriting altered CustomizationItemDB to {outFilename}')
-                    with open(outFilename, 'w') as file:
-                        jsonDump(data, file)
+                    jsonOutPath = os.path.join(
+                        settingsDir,
+                        f"{settingsPathInfo['stem']}_{customizationItemDbPathInfo['stem']}-altered.json",
+                    )
+                    print(f'\nWriting altered CustomizationItemDB to {jsonOutPath}')
+                    if allowWrite(jsonOutPath):
+                        with open(jsonOutPath, 'w') as file:
+                            jsonDump(data, file)
+                        print('Done.')
 
+                    if customizationItemDbPathInfo['suffixLower'] == '.uasset':
+                        print(f'\nWriting altered CustomizationItemDB to {customizationItemDbPath}')
+                        if allowWrite(customizationItemDbPath):
+                            jsonToUasset(jsonOutPath, customizationItemDbPath, uassetGuiPath)
+                            print('Done.')
+
+                    # TODO: this should be optional
                     if True:
-                        outFilename = f'{customizationItemDbPathNoExtension}-altered.yaml'
-                        print(f'\nWriting altered CustomizationItemDB to {outFilename}')
-                        with open(outFilename, 'w') as file:
-                            yamlDump(data, file)
+                        yamlOutPath = os.path.join(
+                            settingsDir,
+                            f"{settingsPathInfo['stem']}_{customizationItemDbPathInfo['stem']}-altered.yaml",
+                        )
+                        print(f'\nWriting altered CustomizationItemDB to {yamlOutPath}')
+                        if allowWrite(yamlOutPath):
+                            with open(yamlOutPath, 'w') as file:
+                                yamlDump(data, file)
+                            print('Done.')
     else:
-        printError(f'{customizationItemDbPath} does not exist')
+        printError(f'{customizationItemDbPath} does not exist', newline=True)
         exitCode = 1
-
-    outputInfoFilename = getResultsFilePath(settingsFilePath)
-    print(f'\nWriting command results to {outputInfoFilename}')
 
     outputInfo = {
         'errors': errors,
@@ -1290,8 +1403,11 @@ def main(
         },
     }
 
-    with open(outputInfoFilename, 'w') as file:
-        yamlDump(jsonifyDataRecursive(outputInfo), file)
+    outputInfoFilename = getResultsFilePath(settingsFilePath)
+    print(f'\nWriting command results to {outputInfoFilename}')
+    if allowWrite(outputInfoFilename):
+        with open(outputInfoFilename, 'w') as file:
+            yamlDump(jsonifyDataRecursive(outputInfo), file)
 
     return exitCode
 
@@ -1317,6 +1433,13 @@ can be converted back to the original uasset file using UAssetGUI.
         type=str,
         default=defaultSettingsPath,
         nargs='?',
+    )
+    defaultUAssetGUIPath = 'UAssetGUI.exe'
+    parser.add_argument(
+        '--uassetGuiPath',
+        help=f'path to UAssetGUI.exe (defaults to `{defaultUAssetGUIPath}`)',
+        type=str,
+        default=defaultUAssetGUIPath,
     )
     parser.add_argument(
         '--list',
@@ -1376,6 +1499,7 @@ can be converted back to the original uasset file using UAssetGUI.
         print('Welcome to DbdSocketsMixer!')
 
         settingsFilePath = args.settingsFilePath
+        uassetGuiPath = args.uassetGuiPath
         debug = args.debug
 
         actionsMap = {action.dest: action for action in parser._actions}
@@ -1400,6 +1524,7 @@ can be converted back to the original uasset file using UAssetGUI.
             print()
 
             print(f"Settings file: {settingsFilePath or '<Not specified>'}")
+            print(f"UAssetGUI path: {uassetGuiPath or '<Not specified>'}")
             print(f"Debug mode: {'on' if debug else 'off'}")
 
             print()
@@ -1412,6 +1537,8 @@ can be converted back to the original uasset file using UAssetGUI.
                     help = "show program version"
                 elif commandName == 'settingsFilePath':
                     help = f"{'change' if settingsFilePath else 'set'} {command['action'].help}"
+                elif commandName == 'uassetGuiPath':
+                    help = f"{'change' if uassetGuiPath else 'set'} {command['action'].help}"
                 elif commandName == 'quit':
                     help = "quit program"
                 elif commandName == 'debug':
@@ -1468,12 +1595,20 @@ can be converted back to the original uasset file using UAssetGUI.
                 elif commandName == 'quit':
                     break
                 elif commandName == 'settingsFilePath':
-                    settingsFilePath = input('Settings YAML file path: ')
-                    if not settingsFilePath.strip():
+                    settingsFilePath = input('Settings YAML file path: ').strip()
+                    if not settingsFilePath:
                         settingsFilePath = defaultSettingsPath
                         print(f'\n(using default)')
 
                     print(f'\nSettings path set to: {settingsFilePath}')
+                    shouldPromptToContinue = True
+                elif commandName == 'uassetGuiPath':
+                    uassetGuiPath = input('UAssetGUI path: ').strip()
+                    if not uassetGuiPath:
+                        uassetGuiPath = defaultUAssetGUIPath
+                        print(f'\n(using default)')
+
+                    print(f'\nUAssetGUI path set to: {uassetGuiPath}')
                     shouldPromptToContinue = True
                 elif commandName == 'debug':
                     debug = not debug
@@ -1485,12 +1620,8 @@ can be converted back to the original uasset file using UAssetGUI.
                         eprint('Only supported on Windows')
                         shouldPromptToContinue = True
                     else:
-                        if os.path.isabs(settingsFilePath):
-                            absolutePath = settingsFilePath
-                        else:
-                            absolutePath = pathlib.Path(os.path.join('./', settingsFilePath)).resolve()
-
-                        settingsDir = os.path.dirname(absolutePath)
+                        settingsPathInfo = getPathInfo(settingsFilePath)
+                        settingsDir = settingsPathInfo['dir']
                         print(f'Opening {settingsDir}')
                         try:
                             os.system(f'start explorer "{settingsDir}"')
@@ -1538,6 +1669,7 @@ can be converted back to the original uasset file using UAssetGUI.
                         mixing,
                         False,
                         debug,
+                        uassetGuiPath,
                     )
                     shouldPromptToContinue = True
 
@@ -1555,6 +1687,7 @@ can be converted back to the original uasset file using UAssetGUI.
             args.mix,
             args.ni,
             args.debug,
+            args.uassetGuiPath,
         )
 
     # TODO: remove
