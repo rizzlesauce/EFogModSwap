@@ -478,8 +478,12 @@ def getPathInfo(path, relativeDir='./'):
     return result
 
 def runCall(args):
-    if subprocess.call(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True):
-        quoted = [f'"{arg}"' for arg in args]
+    quoted = [f'"{arg}"' for arg in args]
+    try:
+        code = subprocess.call(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        if code:
+            raise ValueError(f'subprocess returned error exit code: {code}')
+    except:
         raise ValueError(f"subprocess call failed: {' '.join(quoted)}")
 
 def jsonToUasset(jsonPath, uassetPath, uassetGuiPath):
@@ -514,6 +518,7 @@ def main(
     nonInteractive,
     debug,
     uassetGuiPath,
+    overwriteOverride,
 ):
     """ Main entry point of the app """
 
@@ -557,8 +562,6 @@ def main(
     nameMapSet = set(nameMapArray)
     attachmentsRenamed = {}
 
-    overwriteOverride = None
-
     def allowWrite(path):
         if not os.path.exists(path):
             return True
@@ -568,6 +571,7 @@ def main(
         if overwriteOverride is not None:
             result = overwriteOverride
         elif nonInteractive:
+            printWarning('Cannot confirm file overwrite in non-interactive mode', newline=True)
             result = False
         else:
             print()
@@ -579,23 +583,13 @@ def main(
             if result:
                 printWarning(f'Overwriting "{path}"', newline=True)
             else:
-                printWarning(f'Skipping write of "{path}" (overwrite not allowed)', newline=True)
+                printWarning(f'Skipping write of "{path}" (file exists)', newline=True)
 
         return result
 
     def checkAttachmentName(category, attachmentName, otherInfo=None):
         if attachmentName not in attachmentsToMix.get(category, {}):
             printWarning(f"reference to missing attachment: {category}::{attachmentName}{' (' if otherInfo else ''}{otherInfo or ''}{')' if otherInfo else ''}", newline=True)
-
-    if not os.path.exists(settingsFilePath):
-        printWarning(f'Settings file ({settingsFilePath}) does not exist. Creating it now with default content.')
-        if printingYaml:
-            print(getSettingsTemplate())
-        with open(settingsFilePath, 'w') as file:
-            file.write(getSettingsTemplate())
-
-    settingsPathInfo = getPathInfo(settingsFilePath)
-    settingsDir = settingsPathInfo['dir']
 
     def mergeSettings(parentData, childData):
         for key, value in childData.items():
@@ -627,156 +621,168 @@ def main(
 
         return resultData
 
-    settings = readSettingsRecursive(settingsFilePath)
+    try:
+        if not os.path.exists(settingsFilePath):
+            printWarning(f'Settings file ({settingsFilePath}) does not exist. Creating it now with default content.')
+            if printingYaml:
+                print(getSettingsTemplate())
+            with open(settingsFilePath, 'w') as file:
+                file.write(getSettingsTemplate())
 
-    attachmentsDir = settings.get('attachmentsDir', None)
-    if attachmentsDir is None:
-        defaultAttachmentsDir = 'attachments'
-        printWarning(f'`attachmentsDir` not specified. Defaulting to: {defaultAttachmentsDir}', newline=True)
-        attachmentsDir = defaultAttachmentsDir
+        settingsPathInfo = getPathInfo(settingsFilePath)
+        settingsDir = settingsPathInfo['dir']
+        settings = readSettingsRecursive(settingsFilePath)
 
-    if not os.path.exists(attachmentsDir):
-        printWarning(f'`attachmentsDir` ({attachmentsDir}) does not exist. Creating it now.', newline=True)
-        os.makedirs(attachmentsDir, exist_ok=True)
+        attachmentsDir = settings.get('attachmentsDir', None)
+        if attachmentsDir is None:
+            defaultAttachmentsDir = 'attachments'
+            printWarning(f'`attachmentsDir` not specified. Defaulting to: {defaultAttachmentsDir}', newline=True)
+            attachmentsDir = defaultAttachmentsDir
 
-    if creating:
-        if nonInteractive:
-            printWarning('Cannot create attachment definition in non-interactive mode', newline=True)
-        else:
-            done = False
-            canceled = False
+        if not os.path.exists(attachmentsDir):
+            printWarning(f'`attachmentsDir` ({attachmentsDir}) does not exist. Creating it now.', newline=True)
+            os.makedirs(attachmentsDir, exist_ok=True)
 
-            def confirmCanceled():
-                nonlocal canceled
-                canceled = True
-                return canceled
+        if creating:
+            if nonInteractive:
+                printWarning('Cannot create attachment definition in non-interactive mode', newline=True)
+            else:
+                done = False
+                canceled = False
 
-            print('Adding attachment definition...')
-            while not done:
-                attachment = copy.deepcopy(Attachment.BasicAttachment)
-                attachment['modelCategory'] = ''
-                categoryOptions = {'SurvivorTorso', 'SurvivorLegs', 'SurvivorHead'}
-                while not attachment['modelCategory']:
-                    attachment['modelCategory'] = input(f"Model category ({', '.join(categoryOptions)}): ").strip()
-                    if not attachment['modelCategory']:
-                        if confirmCanceled():
-                            break
-                        else:
-                            continue
+                def confirmCanceled():
+                    nonlocal canceled
+                    canceled = True
+                    return canceled
 
-                    if attachment['modelCategory'] not in categoryOptions:
-                        eprint('ERROR: unsupported category')
-                        attachment['modelCategory'] = ''
+                print('Adding attachment definition...')
+                while not done:
+                    attachment = copy.deepcopy(Attachment.BasicAttachment)
+                    attachment['modelCategory'] = ''
+                    categoryOptions = {'SurvivorTorso', 'SurvivorLegs', 'SurvivorHead'}
+                    while not attachment['modelCategory']:
+                        attachment['modelCategory'] = input(f"Model category ({', '.join(categoryOptions)}): ").strip()
+                        if not attachment['modelCategory']:
+                            if confirmCanceled():
+                                break
+                            else:
+                                continue
 
-                if canceled:
-                    break
+                        if attachment['modelCategory'] not in categoryOptions:
+                            eprint('ERROR: unsupported category')
+                            attachment['modelCategory'] = ''
 
-                attachment['attachmentId'] = ''
-                while not attachment['attachmentId']:
-                    attachment['attachmentId'] = input('Attachment ID: ').strip()
-                    if not attachment['attachmentId']:
-                        if confirmCanceled():
-                            break
-                        else:
-                            continue
-
-                    filename = Attachment.getAttachmentFilename(attachment['attachmentId'])
-                    filePath = os.path.join(attachmentsDir, filename)
-                    if os.path.exists(filePath):
-                        eprint('ERROR: attachment ID already exists')
-                        attachment['attachmentId'] = ''
-
-                if canceled:
-                    break
-
-                attachment['displayName'] = ''
-                while not attachment['displayName']:
-                    attachment['displayName'] = input('Display name: ').strip()
-                    if not attachment['displayName']:
-                        #  allow it to be empty
+                    if canceled:
                         break
 
-                if canceled:
-                    break
+                    attachment['attachmentId'] = ''
+                    while not attachment['attachmentId']:
+                        attachment['attachmentId'] = input('Attachment ID: ').strip()
+                        if not attachment['attachmentId']:
+                            if confirmCanceled():
+                                break
+                            else:
+                                continue
 
-                values = getPropertyValue(attachment['attachmentData'])
-                blueprintAttachment = findNextItemByFields(
-                    values,
-                    [
-                        ItemTypeName,
-                        NameFieldName,
-                    ],
-                    [
-                        'UAssetAPI.PropertyTypes.Objects.SoftObjectPropertyData, UAssetAPI',
-                        'AttachementBlueprint',
-                    ]
-                )
-                assetPath = getPropertyValue(blueprintAttachment)['AssetPath']
-                assetPath['AssetName'] = ''
-                while not assetPath['AssetName']:
-                    assetPath['AssetName'] = input('Blueprint path: ').strip()
-                    if not assetPath['AssetName']:
-                        if confirmCanceled():
+                        filename = Attachment.getAttachmentFilename(attachment['attachmentId'])
+                        filePath = os.path.join(attachmentsDir, filename)
+                        if os.path.exists(filePath):
+                            eprint('ERROR: attachment ID already exists')
+                            attachment['attachmentId'] = ''
+
+                    if canceled:
+                        break
+
+                    attachment['displayName'] = ''
+                    while not attachment['displayName']:
+                        attachment['displayName'] = input('Display name: ').strip()
+                        if not attachment['displayName']:
+                            #  allow it to be empty
                             break
-                        else:
-                            continue
 
-                    if not assetPath['AssetName'].startswith('/Game/'):
-                        eprint('ERROR: should start with `/Game/`')
-                        assetPath['AssetName'] = ''
-                        continue
+                    if canceled:
+                        break
 
-                    try:
-                        path = pathlib.PurePosixPath(assetPath['AssetName'])
-                    except Exception as e:
-                        eprint('ERROR: invalid path')
-                        assetPath['AssetName'] = ''
-                        continue
+                    values = getPropertyValue(attachment['attachmentData'])
+                    blueprintAttachment = findNextItemByFields(
+                        values,
+                        [
+                            ItemTypeName,
+                            NameFieldName,
+                        ],
+                        [
+                            'UAssetAPI.PropertyTypes.Objects.SoftObjectPropertyData, UAssetAPI',
+                            'AttachementBlueprint',
+                        ]
+                    )
+                    assetPath = getPropertyValue(blueprintAttachment)['AssetPath']
+                    assetPath['AssetName'] = ''
+                    while not assetPath['AssetName']:
+                        assetPath['AssetName'] = input('Blueprint path: ').strip()
+                        if not assetPath['AssetName']:
+                            if confirmCanceled():
+                                break
+                            else:
+                                continue
 
-                    if not path.stem:
-                        eprint('ERROR: invalid name')
-                        assetPath['AssetName'] = ''
-                        continue
-
-                    stem = path.stem
-                    suffix = f'.{stem}_C'
-                    if path.suffix:
-                        if path.suffix != suffix:
-                            eprint('ERROR: invalid path suffix. Should be {suffix}')
+                        if not assetPath['AssetName'].startswith('/Game/'):
+                            eprint('ERROR: should start with `/Game/`')
                             assetPath['AssetName'] = ''
                             continue
-                    else:
-                        path = path.with_name(f'{stem}{suffix}')
 
-                    normalizedPath = path.as_posix()
-                    print(f'Normalized path: {normalizedPath}')
-                    assetPath['AssetName'] = normalizedPath
+                        try:
+                            path = pathlib.PurePosixPath(assetPath['AssetName'])
+                        except Exception as e:
+                            eprint('ERROR: invalid path')
+                            assetPath['AssetName'] = ''
+                            continue
+
+                        if not path.stem:
+                            eprint('ERROR: invalid name')
+                            assetPath['AssetName'] = ''
+                            continue
+
+                        stem = path.stem
+                        suffix = f'.{stem}_C'
+                        if path.suffix:
+                            if path.suffix != suffix:
+                                eprint('ERROR: invalid path suffix. Should be {suffix}')
+                                assetPath['AssetName'] = ''
+                                continue
+                        else:
+                            path = path.with_name(f'{stem}{suffix}')
+
+                        normalizedPath = path.as_posix()
+                        print(f'Normalized path: {normalizedPath}')
+                        assetPath['AssetName'] = normalizedPath
+
+                    if canceled:
+                        break
+
+                    print(f'Writing to {filePath}')
+                    if allowWrite(filePath):
+                        with open(filePath, 'w') as file:
+                            yamlDump(attachment, file)
+                        print('done.')
+
+                    if not confirm('add another', emptyMeansNo=True):
+                        done = True
 
                 if canceled:
-                    break
+                    print(f'\nAdd canceled.\n')
 
-                print(f'Writing to {filePath}')
-                if allowWrite(filePath):
-                    with open(filePath, 'w') as file:
-                        yamlDump(attachment, file)
-                    print('done.')
+        customizationItemDbPath = settings.get('customizationItemDbPath', None)
+        if customizationItemDbPath is None:
+            customizationItemDbPath = 'CustomizationItemDB.json'
+            printWarning(f'`customizationItemDbPath` not specified. defaulting to: {customizationItemDbPath}', newline=True)
+        customizationItemDbPathInfo = getPathInfo(customizationItemDbPath)
+        customizationItemDbSupportedFileTypes = ['.json', '.uasset']
+        if customizationItemDbPathInfo['suffixLower'] not in customizationItemDbSupportedFileTypes:
+            raise ValueError(f'Unsupported file extension for {customizationItemDbPath}: must be one of ({", ".join(customizationItemDbSupportedFileTypes)})')
 
-                if not confirm('add another', emptyMeansNo=True):
-                    done = True
+        if not os.path.isfile(customizationItemDbPath):
+            raise ValueError(f'{customizationItemDbPath} does not exist')
 
-            if canceled:
-                print(f'\nAdd canceled.\n')
-
-    customizationItemDbPath = settings.get('customizationItemDbPath', None)
-    if customizationItemDbPath is None:
-        customizationItemDbPath = 'CustomizationItemDB.json'
-        printWarning(f'`customizationItemDbPath` not specified. defaulting to: {customizationItemDbPath}', newline=True)
-    customizationItemDbPathInfo = getPathInfo(customizationItemDbPath)
-    customizationItemDbSupportedFileTypes = ['.json', '.uasset']
-    if customizationItemDbPathInfo['suffixLower'] not in customizationItemDbSupportedFileTypes:
-        printError(f'Unsupported file extension for {customizationItemDbPath}: must be one of ({", ".join(customizationItemDbSupportedFileTypes)})', newline=True)
-        exitCode = 1
-    elif os.path.isfile(customizationItemDbPath):
         if customizationItemDbPathInfo['suffixLower'] == '.json':
             customizationItemDbJsonPath = customizationItemDbPath
         elif customizationItemDbPathInfo['suffixLower'] == '.uasset':
@@ -789,7 +795,7 @@ def main(
                 uassetToJson(customizationItemDbPath, customizationItemDbJsonPath, uassetGuiPath)
                 print('Done converting.')
         else:
-            raise ValueError()
+            raise ValueError('internal error')
 
         with oneLinePrinter() as oneLinePrint:
             oneLinePrint(f'\nReading CustomizationItemDB JSON from {customizationItemDbJsonPath}...')
@@ -862,11 +868,10 @@ def main(
                                     print(f'Renaming {filename} to {newFilename}')
                                     newFilePath = os.path.join(attachmentsDir, newFilename)
                                     if os.path.exists(newFilePath):
-                                        printError(f'Could not rename {filename} to {newFilename} (file already exists)!', newline=True)
-                                        exitCode = 1
-                                    else:
-                                        os.rename(filePath, newFilePath)
-                                        attachmentsRenamed[filename] = newFilename
+                                        raise ValueError(f'Could not rename {filename} to {newFilename} (file already exists)')
+
+                                    os.rename(filePath, newFilePath)
+                                    attachmentsRenamed[filename] = newFilename
                     except Exception as e:
                         printError(e, newline=True)
                         exitCode = 1
@@ -1385,8 +1390,8 @@ def main(
                             with open(yamlOutPath, 'w') as file:
                                 yamlDump(data, file)
                             print('Done.')
-    else:
-        printError(f'{customizationItemDbPath} does not exist', newline=True)
+    except Exception as e:
+        printError(e, newline=True)
         exitCode = 1
 
     outputInfo = {
@@ -1477,6 +1482,11 @@ can be converted back to the original uasset file using UAssetGUI.
         action='store_true',
     )
     parser.add_argument(
+        '--overwrite',
+        help='force or prevent file overwrites without prompting',
+        action=argparse.BooleanOptionalAction,
+    )
+    parser.add_argument(
         '--version',
         action='version',
         version=f'%(prog)s {__version__}',
@@ -1501,6 +1511,7 @@ can be converted back to the original uasset file using UAssetGUI.
         settingsFilePath = args.settingsFilePath
         uassetGuiPath = args.uassetGuiPath
         debug = args.debug
+        overwriteOverride = args.overwrite
 
         actionsMap = {action.dest: action for action in parser._actions}
 
@@ -1526,6 +1537,7 @@ can be converted back to the original uasset file using UAssetGUI.
             print(f"Settings file: {settingsFilePath or '<Not specified>'}")
             print(f"UAssetGUI path: {uassetGuiPath or '<Not specified>'}")
             print(f"Debug mode: {'on' if debug else 'off'}")
+            print(f"Overwrite mode: {'overwrite' if overwriteOverride else 'no overwrite' if overwriteOverride is False else 'prompt'}")
 
             print()
 
@@ -1543,6 +1555,8 @@ can be converted back to the original uasset file using UAssetGUI.
                     help = "quit program"
                 elif commandName == 'debug':
                     help = f"turn {'off' if debug else 'on'} debug flag ({'do not ' if debug else ''}{command['action'].help})"
+                elif commandName == 'overwrite':
+                    help = f"switch overwrite mode ({command['action'].help})"
                 elif commandName == 'folder':
                     help = f'open settings folder in explorer'
                 elif commandName == 'editSettings':
@@ -1614,6 +1628,15 @@ can be converted back to the original uasset file using UAssetGUI.
                     debug = not debug
                     print(f"Turned debug flag {'on' if debug else 'off'}")
                     shouldPromptToContinue = True
+                elif commandName == 'overwrite':
+                    if overwriteOverride:
+                        overwriteOverride = False
+                    elif overwriteOverride is False:
+                        overwriteOverride = None
+                    else:
+                        overwriteOverride = True
+                    print(f"Switched overwrite mode to `{'overwrite' if overwriteOverride else 'no overwrite' if overwriteOverride is False else 'prompt'}`")
+                    shouldPromptToContinue = True
                 elif commandName == 'folder':
                     shouldPromptToContinue = False
                     if platform.system() != 'Windows':
@@ -1670,6 +1693,7 @@ can be converted back to the original uasset file using UAssetGUI.
                         False,
                         debug,
                         uassetGuiPath,
+                        overwriteOverride,
                     )
                     shouldPromptToContinue = True
 
@@ -1688,6 +1712,7 @@ can be converted back to the original uasset file using UAssetGUI.
             args.ni,
             args.debug,
             args.uassetGuiPath,
+            args.overwrite,
         )
 
     # TODO: remove
