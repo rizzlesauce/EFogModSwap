@@ -1,4 +1,4 @@
-BasicAttachment = {'attachmentId': '',
+basicAttachmentTemplate = {'attachmentId': '',
  'modelCategory': '',
  'displayName': '',
  'attachmentData': {'$type': 'UAssetAPI.PropertyTypes.Structs.StructPropertyData, '
@@ -81,3 +81,6 @@ BasicAttachment = {'attachmentId': '',
 
 def getAttachmentFilename(attachmentId):
     return f'SocketAttachment_{attachmentId}.yaml'
+
+def getAttachmentDisplayName(attachment):
+    return attachment['displayName'] or attachment['attachmentId']
