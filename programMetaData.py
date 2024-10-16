@@ -1,4 +1,3 @@
-Version = '0.1.4'
-
 ProgramName = 'DbdModSwap'
 ProgramFilename = f'{ProgramName}.exe'
+Version = '0.2.0'
