@@ -1,4 +1,5 @@
 import pprint
+import shutil
 import sys
 from contextlib import contextmanager
 
@@ -107,6 +108,17 @@ def sprintput(*args, **kwargs):
     return result
 
 
+def sprintClear():
+    global hasPriorPrintSection
+    global needsNewPrintSection
+    global sprintPads
+    cols, rows = shutil.get_terminal_size()
+    print('\n' * (rows - 1))
+    hasPriorPrintSection = False
+    needsNewPrintSection = False
+    sprintPads = 0
+
+
 def esprint(*args, **kwargs):
     global hasPriorPrintSection
     sprintApply()
@@ -138,11 +150,11 @@ def promptToContinue(purpose='to continue...', pad=True):
         sprintPad()
 
 
-def confirm(action, emptyMeansNo=None, pad=False):
+def confirm(action, emptyMeansNo=None, pad=False, prefix=None):
     if pad:
         sprintPad()
     while True:
-        result = sprintput(f'{action[0].upper()}{action[1:]} (Y/n)? ').strip()
+        result = sprintput(f'{prefix or ""}{action[0].upper()}{action[1:]} (Y/n)? ').strip()
         if result.upper() == 'Y':
             confirmed = True
             break
@@ -157,5 +169,5 @@ def confirm(action, emptyMeansNo=None, pad=False):
     return confirmed
 
 
-def confirmOverwrite(target, pad=True):
-    return confirm(f'overwrite "{target}"', pad=pad)
+def confirmOverwrite(target, pad=True, prefix=None):
+    return confirm(f'overwrite "{target}"', pad=pad, prefix=prefix)

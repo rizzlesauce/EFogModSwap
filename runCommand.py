@@ -4,6 +4,7 @@ import os
 import pathlib
 import shutil
 import tempfile
+import traceback
 from itertools import combinations
 
 import yaml
@@ -13,7 +14,8 @@ from attachmentHelpers import (basicAttachmentTemplate,
 from consoleHelpers import (clearSprintRecording, confirm, confirmOverwrite,
                             esprint, getSprintIsRecording, oneLinePrinter,
                             promptToContinue, replaySprintRecording, sprint,
-                            sprintPad, sprintput, startSprintRecording)
+                            sprintClear, sprintPad, sprintput,
+                            startSprintRecording)
 from customizationItemDbHelpers import (CustomizationItemDbAssetName,
                                         ECustomizationCategoryName,
                                         ECustomizationCategoryNamePrefix,
@@ -29,13 +31,13 @@ from fileHelpers import listFilesRecursively
 from gameHelpers import (getGameIsRunning, getGamePaksDir, killGame,
                          openGameLauncher)
 from jsonHelpers import jsonDump, jsonifyDataRecursive
-from pakHelpers import (DefaultPlatform, PakchunkFileExtension,
-                        getPackchunkFilenameParts, getPakContentDir,
-                        toPakchunkStem, unrealPak, unrealUnpak)
+from pakHelpers import (DefaultPlatform, PakchunkFilenameSuffix,
+                        getPakContentDir, pakchunkRefnamePartsDictToRefname,
+                        pakchunkRefnamePartsToRefname,
+                        pakchunkRefnameToFilename, pakchunkRefnameToParts,
+                        unrealPak, unrealUnpak)
 from pathHelpers import getPathInfo, normPath
-from settingsHelpers import (DefaultAttachmentsDir,
-                             DefaultCustomizationItemDbPath, DefaultPakingDir,
-                             DefaultUassetGuiPath, DefaultUnrealPakPath,
+from settingsHelpers import (DefaultAttachmentsDir, DefaultPakingDir,
                              findSettingsFiles, getContentDirRelativePath,
                              getResultsFilePath, getSettingsTemplate)
 from uassetHelpers import (ItemTypeName, NameFieldName, ValueFieldName,
@@ -48,10 +50,44 @@ from windowsHelpers import openFolder
 from yamlHelpers import yamlDump
 
 
+def mergeSettings(parentData, childData):
+    for key, value in childData.items():
+        # TODO: merge data instead of overwriting
+        parentData[key] = childData[key]
+
+
+def readSettingsRecursive(filePath, relativeDir='.', silent=False):
+    resultData = {}
+
+    pathInfo = getPathInfo(filePath, relativeDir=relativeDir)
+    filePath = pathInfo['best']
+
+    if not silent:
+        sprint(f'Reading settings from "{filePath}"')
+    if not os.path.isfile(filePath):
+        raise ValueError(f'Could not read settings from "{filePath}" (file not found)')
+
+    with open(filePath, 'r') as file:
+        data = yaml.safe_load(file)
+
+    # TODO: ensure relative paths in settings are converted to relative paths
+    # to relativeDir
+
+    for otherPath in data.get('import', []):
+        # import paths are relative to the file importing them
+        otherData = readSettingsRecursive(otherPath, relativeDir=pathInfo['dir'], silent=silent)
+        mergeSettings(resultData, otherData)
+
+    mergeSettings(resultData, data)
+
+    return resultData
+
+
 def runCommand(**kwargs):
     """ Main entry point of the app """
 
     settingsFilePath = kwargs.get('settingsFilePath', '')
+    activeModConfigName = kwargs.get('activeModConfigName', '')
     inspecting = kwargs.get('inspecting', False)
     creatingAttachments = kwargs.get('creatingAttachments', False)
     extractingAttachments = kwargs.get('extractingAttachments', False)
@@ -65,8 +101,14 @@ def runCommand(**kwargs):
     debug = kwargs.get('debug', False)
     uassetGuiPath = kwargs.get('uassetGuiPath', '')
     overwriteOverride = kwargs.get('overwriteOverride', None)
+    dryRun = kwargs.get('dryRun', False)
 
-    if openingGameLauncher:
+    DryRunPrefix = '[DryRun] '
+    dryRunPrefix = DryRunPrefix if dryRun else ''
+
+    launcherClearsScreenBuffer = False
+
+    if openingGameLauncher and not dryRun and launcherClearsScreenBuffer:
         startSprintRecording()
 
     # TODO: remove -- too verbose
@@ -88,24 +130,40 @@ def runCommand(**kwargs):
             sprintPad()
 
     errors = []
-    def printError(message, pad=True):
+    def printError(error, pad=True):
         nonlocal exitCode
 
         exitCode = 1
 
-        errors.append(str(message))
+        if isinstance(error, Exception):
+            traceLines = traceback.format_exception(error)
+            lines = traceback.format_exception_only(error)
+        elif isinstance(error, list):
+            lines = error
+            traceLines = lines
+        else:
+            lines = [error]
+            traceLines = lines
+
+        for line in traceLines:
+            errors.append(str(line))
+
         if pad:
             sprintPad()
-        esprint(f'ERROR: {message}')
+
+        for line in (traceLines if debug else lines):
+            esprint(f'ERROR: {line}')
+
         if pad:
             sprintPad()
 
     if killingGame:
         sprintPad()
-        sprint(f'Killing game...')
+        sprint(f'{dryRunPrefix}Killing game...')
         if getGameIsRunning():
-            killGame()
-            sprint(f'Game process terminated.')
+            if not dryRun:
+                killGame()
+            sprint(f'{dryRunPrefix}Game process terminated.')
             # TODO: need to wait?
         else:
             sprint('Game is not running.')
@@ -141,9 +199,11 @@ def runCommand(**kwargs):
     gameDir = ''
     gamePaksDir = ''
     gamePakchunks = []
-    reservedPakchunks = []
-    modsToBeActive = []
-    pakingDirPakchunks = []
+    modConfigNameGroupsMap = {}
+    modGroupNamePakchunksMap = {}
+    reservedPakchunks = None
+    targetActiveMods = []
+    pakingDirPakchunkStems = []
     gameName = ''
     unrealProjectDir = ''
     unrealPakPath = ''
@@ -151,15 +211,17 @@ def runCommand(**kwargs):
     srcPakPath = ''
     srcPakStem = ''
     srcPakDir = ''
-    srcPakNumber = None
+    srcPakNumber = -1
     srcPakName = None
     srcPakPlatform = None
+    srcPakPlatformSuffix = None
     srcContentDir = ''
     srcPakContentDir = ''
     srcPakContentPaths = []
     srcPakContentAssetPathsMap = {}
     destPakNumber = None
     destPakName = ''
+    destPakPlatformSuffix = ''
     destPakAssets = None
 
     destPakStem = ''
@@ -172,6 +234,13 @@ def runCommand(**kwargs):
     customizationItemDbPath = ''
     customizationItemDbJsonPath = ''
     customizationItemDb = None
+
+    equivalentParts = {}
+    supersetParts = {}
+    mutuallyExclusive = {}
+    attachmentConflicts = {}
+    combosToSkip = {}
+
     combinationsAdded = {}
     combinationsSkipped = {}
     attachmentsToMix = {}
@@ -182,12 +251,23 @@ def runCommand(**kwargs):
     nameMapSet = set(nameMapArray)
     attachmentsRenamed = {}
 
-    def ensureDir(dir, title='Directory', warnIfNotExist=True):
+    dryRunDirsCreated = {}
+
+    def ensureDir(dir, title='Folder', warnIfNotExist=True):
         dir = getPathInfo(dir)['best']
-        if not os.path.exists(dir):
-            if warnIfNotExist:
-                printWarning(f'{title or "Directory"} ("{dir}") does not exist. Creating it now.')
-            os.makedirs(dir, exist_ok=True)
+        if not os.path.exists(dir) and (not dryRun or dir not in dryRunDirsCreated):
+            if warnIfNotExist or dryRun:
+                printWarning(f'{title or "Folder"} ("{dir}") does not exist. {dryRunPrefix}Creating it now.')
+            shouldWrite = not dryRun or (not nonInteractive and confirm(f'Create folder "{dir}" despite dry run', pad=True, emptyMeansNo=True))
+            written = False
+            if shouldWrite:
+                os.makedirs(dir, exist_ok=True)
+                written = True
+            if (written or dryRun) and warnIfNotExist or dryRun:
+                sprint(f'{dryRunPrefix if not written else ""}Done writing.')
+                sprintPad()
+            if dryRun:
+                dryRunDirsCreated.add(dir)
         return dir
 
     def ensureAttachmentsDir():
@@ -196,8 +276,13 @@ def runCommand(**kwargs):
     def ensurePakingDir():
         return ensureDir(pakingDir, '`pakingDir`')
 
-    def readyToWrite(path, delete=True, overwrite=None):
+    def readyToWrite(path, delete=True, overwrite=None, dryRunHere=None):
         path = getPathInfo(path)['best']
+
+        if dryRunHere is None:
+            dryRunHere = dryRun
+
+        dryRunPrefixHere = DryRunPrefix if dryRunHere else ''
 
         if not os.path.exists(path):
             return True
@@ -212,16 +297,16 @@ def runCommand(**kwargs):
             printWarning('Cannot confirm file overwrite in non-interactive mode')
             result = False
         else:
-            result = confirmOverwrite(path)
+            result = confirmOverwrite(path, prefix=dryRunPrefixHere)
             shouldWarn = False
 
-        if shouldWarn:
-            if result:
-                printWarning(f'Overwriting "{path}"')
-            else:
-                printWarning(f'Skipping write of "{path}" (file exists)')
+        if result:
+            if shouldWarn or dryRunHere:
+                printWarning(f'{dryRunPrefixHere}Overwriting "{path}"')
+        elif shouldWarn:
+            printWarning(f'Skipping write of "{path}" (file exists)')
 
-        if result and delete:
+        if result and delete and not dryRunHere:
             if os.path.isdir(path):
                 shutil.rmtree(path)
             else:
@@ -233,57 +318,32 @@ def runCommand(**kwargs):
         if attachmentName not in attachmentsToMix.get(category, {}):
             printWarning(f"reference to missing attachment: {category}::{attachmentName}{' (' if otherInfo else ''}{otherInfo or ''}{')' if otherInfo else ''}")
 
-    def mergeSettings(parentData, childData):
-        for key, value in childData.items():
-            # TODO: merge data instead of overwriting
-            parentData[key] = childData[key]
-
-    def readSettingsRecursive(filePath, relativeDir='.'):
-        resultData = {}
-
-        pathInfo = getPathInfo(filePath, relativeDir=relativeDir)
-        filePath = pathInfo['best']
-
-        sprint(f'Reading settings from "{filePath}"')
-        if not os.path.isfile(filePath):
-            raise ValueError(f'Could not read settings from "{filePath}" (file not found)')
-
-        with open(filePath, 'r') as file:
-            data = yaml.safe_load(file)
-
-        # TODO: ensure relative paths in settings are converted to relative paths
-        # to relativeDir
-
-        for otherPath in data.get('import', []):
-            # import paths are relative to the file importing them
-            otherData = readSettingsRecursive(otherPath, relativeDir=pathInfo['dir'])
-            mergeSettings(resultData, otherData)
-
-        mergeSettings(resultData, data)
-
-        return resultData
-
     try:
         if not os.path.exists(settingsFilePath):
-            printWarning(f'Settings file ("{settingsFilePath}") does not exist. Creating it now with default content.')
+            printWarning(f'Settings file ("{settingsFilePath}") does not exist. {dryRunPrefix}Creating it now with default content.')
             yamlStringContent = getSettingsTemplate()
             if printingYaml:
                 sprint(yamlStringContent)
                 sprintPad()
-            with open(settingsFilePath, 'w') as file:
-                file.write(yamlStringContent)
+            shouldWrite = not dryRun or (not nonInteractive and confirm(f'write settings file ("{settingsFilePath}") despite dry run', pad=True, emptyMeansNo=True))
+            written = False
+            if shouldWrite:
+                with open(settingsFilePath, 'w') as file:
+                    file.write(yamlStringContent)
+                    written = True
+            if written or dryRun:
+                sprint(f'{dryRunPrefix if not written else ""}Done writing.')
+            sprintPad()
 
         settingsPathInfo = getPathInfo(settingsFilePath)
         settingsDir = settingsPathInfo['dir']
         settings = readSettingsRecursive(settingsFilePath)
 
         if not unrealPakPath:
-            unrealPakPath = settings.get('unrealPakPath', None)
-            usingDefault = unrealPakPath is None
-            if usingDefault:
-                unrealPakPath = DefaultUnrealPakPath
-            unrealPakPath = getPathInfo(unrealPakPath)['best']
-            if usingDefault and (
+            unrealPakPath = settings.get('unrealPakPath', '')
+        unrealPakPath = getPathInfo(unrealPakPath)['best']
+        if not unrealPakPath:
+            if (
                 inspecting
                 or paking
                 or (
@@ -293,15 +353,16 @@ def runCommand(**kwargs):
                     )
                 )
             ):
-                printWarning(f'Missing or empty `unrealPakPath`. Defaulting to "{unrealPakPath}"')
+                printWarning('Missing or empty `unrealPakPath`')
+        elif not os.path.isfile(unrealPakPath):
+            printError(f'`unrealPakPath` is not a file ("{unrealPakPath}")')
+            unrealPakPath = ''
 
         if not uassetGuiPath:
-            uassetGuiPath = settings.get('uassetGuiPath', None)
-            usingDefault = uassetGuiPath is None
-            if usingDefault:
-                uassetGuiPath = DefaultUassetGuiPath
-            uassetGuiPath = getPathInfo(uassetGuiPath)['best']
-            if usingDefault and (
+            uassetGuiPath = settings.get('uassetGuiPath', '')
+        uassetGuiPath = getPathInfo(uassetGuiPath)['best']
+        if not uassetGuiPath:
+            if (
                 inspecting
                 or (
                     customizationItemDbPath
@@ -311,15 +372,17 @@ def runCommand(**kwargs):
                     )
                 )
             ):
-                printWarning(f'Missing or empty `uassetGuiPath`. Defaulting to "{uassetGuiPath}"')
+                printWarning('Missing or empty `uassetGuiPath`')
+        elif not os.path.isfile(uassetGuiPath):
+            printError(f'`uassetGuiPath` is not a file ("{uassetGuiPath}")')
+            uassetGuiPath = ''
 
         if not pakingDir:
-            pakingDir = settings.get('pakingDir', None)
-            usingDefault = pakingDir is None
-            if usingDefault:
-                pakingDir = DefaultPakingDir
-            pakingDir = getPathInfo(pakingDir)['best']
-            if usingDefault and (
+            pakingDir = settings.get('pakingDir', '')
+        pakingDir = getPathInfo(pakingDir)['best']
+        if not pakingDir:
+            pakingDir = getPathInfo(DefaultPakingDir)['best']
+            if (
                 inspecting
                 or extractingAttachments
                 or mixingAttachments
@@ -329,12 +392,11 @@ def runCommand(**kwargs):
                 printWarning(f'Missing or empty `pakingDir`. Defaulting to "{pakingDir}"')
 
         if not attachmentsDir:
-            attachmentsDir = settings.get('attachmentsDir', None)
-            usingDefault = attachmentsDir is None
-            if usingDefault:
-                attachmentsDir = DefaultAttachmentsDir
-            attachmentsDir = getPathInfo(attachmentsDir)['best']
-            if usingDefault and (
+            attachmentsDir = settings.get('attachmentsDir', '')
+        attachmentsDir = getPathInfo(attachmentsDir)['best']
+        if not attachmentsDir:
+            attachmentsDir = getPathInfo(DefaultAttachmentsDir)['best']
+            if (
                 inspecting
                 or extractingAttachments
                 or creatingAttachments
@@ -344,61 +406,133 @@ def runCommand(**kwargs):
                 printWarning(f'Missing or empty `attachmentsDir`. Defaulting to "{attachmentsDir}"')
 
         if not gameDir:
-            gameDir = getPathInfo(settings.get('gameDir', ''))['best']
-            if not gameDir and inspecting:
+            gameDir = settings.get('gameDir', '')
+        gameDir = getPathInfo(gameDir)['best']
+        if not gameDir:
+            if inspecting:
                 printWarning('Missing or empty `gameDir`')
+        elif not os.path.isdir(gameDir):
+            printError(f'`gameDir` is not a directory ("{gameDir}")')
+            gameDir = ''
 
         if not gameName:
-            gameName = settings.get('gameName', '').strip()
-            if not gameName and inspecting:
-                printWarning('Missing or empty `gameName`')
+            gameName = settings.get('gameName', '')
+        gameName = gameName.strip()
+        if not gameName and inspecting:
+            printWarning('Missing or empty `gameName`')
 
         if not unrealProjectDir:
-            unrealProjectDir = getPathInfo(settings.get('unrealProjectDir', ''))['best']
-            if not unrealProjectDir and (
+            unrealProjectDir = settings.get('unrealProjectDir', '')
+        unrealProjectDir = getPathInfo(unrealProjectDir)['best']
+        if not unrealProjectDir:
+            if (
                 inspecting
                 or extractingAttachments
                 or mixingAttachments
                 or paking
             ):
                 printWarning(f'Missing or empty `unrealProjectDir`')
+        elif not os.path.isdir(unrealProjectDir):
+            printError(f'`unrealProjectDir` is not a directory ("{unrealProjectDir}")')
+            unrealProjectDir = ''
 
         if not srcPakPath:
-            srcPakPath = getPathInfo(settings.get('srcPakPath', ''))['best']
-            if not srcPakPath and inspecting:
-                printWarning(f'Missing or empty `srcPakPath`')
+            srcPakPath = settings.get('srcPakPath', '')
+        srcPakPath = getPathInfo(srcPakPath)['best']
+        if not srcPakPath and inspecting:
+            printWarning(f'Missing or empty `srcPakPath`')
 
         if not customizationItemDbPath:
-            customizationItemDbPath = getPathInfo(settings.get('customizationItemDbPath', ''))['best']
-            if not customizationItemDbPath and inspecting:
-                printWarning(f'Missing or empty `customizationItemDbPath`')
+            customizationItemDbPath = settings.get('customizationItemDbPath', '')
+        customizationItemDbPath = customizationItemDbPath.strip()
+        if not customizationItemDbPath and inspecting:
+            printWarning(f'Missing or empty `customizationItemDbPath`')
 
         if destPakNumber is None:
             destPakNumber = int(settings.get('destPakNumber', -1))
-            if destPakNumber < 0 and (
-                inspecting
-                or paking
-            ):
-                printWarning(f'Missing, empty, or invalid `destPakNumber`')
+        if destPakNumber < 0 and (
+            inspecting
+            or paking
+        ):
+            printWarning(f'Missing, empty, or invalid `destPakNumber`')
 
         if not destPakName:
-            destPakName = settings.get('destPakName', '').strip()
-            if not destPakName and (
-                inspecting
-                or paking
-            ):
-                printWarning(f'Missing or empty `destPakName`')
+            destPakName = settings.get('destPakName', '')
+        destPakName = destPakName.strip()
+        if not destPakName and (
+            inspecting
+            or paking
+        ):
+            printWarning(f'Missing or empty `destPakName`')
 
         if destPakAssets is None:
             destPakAssets = settings.get('destPakAssets', None)
-            if destPakAssets is None:
-                if inspecting:
-                    printWarning('Missing `destPakAssets`')
-            elif not destPakAssets:
-                if inspecting or paking:
-                    printWarning('Empty `destPakAssets`')
-            else:
-                destPakAssets = [getPathInfo(p)['normalized'] for p in destPakAssets]
+        if destPakAssets is None:
+            if inspecting:
+                printWarning('Missing `destPakAssets`')
+        elif not destPakAssets:
+            if inspecting or paking:
+                printWarning('Empty `destPakAssets`')
+        else:
+            destPakAssets = [getPathInfo(p)['normalized'] for p in destPakAssets]
+
+        if not activeModConfigName:
+            activeModConfigName = settings.get('activeModConfig', '')
+        activeModConfigName = (activeModConfigName or '').strip()
+        if not activeModConfigName:
+            message = 'No active mod config (missing `activeModConfig`)'
+            if installingMods:
+                printError(message)
+            elif inspecting:
+                printWarning(message)
+
+        if not modConfigNameGroupsMap:
+            modConfigNameGroupsMap = settings.get('modConfigs', {})
+        if not modConfigNameGroupsMap:
+            message = 'Missing or empty `modConfigs`'
+            if installingMods:
+                printError(message)
+            elif inspecting:
+                printWarning(message)
+
+        if not modGroupNamePakchunksMap:
+            modGroupNamePakchunksMap = settings.get('modGroups', {})
+        if not modGroupNamePakchunksMap:
+            message = 'Missing or empty `modGroups`'
+            if installingMods:
+                printError(message)
+            elif inspecting:
+                printWarning(message)
+
+        if reservedPakchunks is None:
+            reservedPakchunks = settings.get('reservedPakchunks', [])
+        if not reservedPakchunks:
+            printWarning(f'Missing or empty `reservedPakchunks`')
+
+        if not equivalentParts:
+            equivalentParts = settings.get('equivalentParts', {})
+        if not equivalentParts and inspecting:
+            printWarning('Missing or empty `equivalentParts`')
+
+        if not supersetParts:
+            supersetParts = settings.get('supersetParts', {})
+        if not supersetParts and inspecting:
+            printWarning('Missing or empty `supersetParts`')
+
+        if not mutuallyExclusive:
+            mutuallyExclusive = settings.get('mutuallyExclusive', {})
+        if not mutuallyExclusive and inspecting:
+            printWarning('Missing or empty `mutuallyExclusive`')
+
+        if not attachmentConflicts:
+            attachmentConflicts = settings.get('attachmentConflicts', {})
+        if not attachmentConflicts and inspecting:
+            printWarning('Missing or empty `attachmentConflicts`')
+
+        if not combosToSkip:
+            combosToSkip = settings.get('combosToSkip', [])
+        if not combosToSkip and inspecting:
+            printWarning('Missing or empty `combosToSkip`')
 
         if creatingAttachments:
             if nonInteractive:
@@ -524,11 +658,17 @@ def runCommand(**kwargs):
                     if canceled:
                         break
 
-                    sprint(f'Writing to "{filePath}"')
-                    if readyToWrite(filePath):
-                        with open(filePath, 'w') as file:
-                            yamlDump(attachment, file)
-                        sprint('done.')
+                    sprint(f'{dryRunPrefix}Writing attachment definition to "{filePath}"')
+                    shouldWrite = not dryRun or (not nonInteractive and confirm(f'write attachment definition ("{filePath}") despite dry run', pad=True, emptyMeansNo=True))
+                    written = False
+                    if shouldWrite:
+                        if readyToWrite(filePath, dryRunHere=False):
+                            with open(filePath, 'w') as file:
+                                yamlDump(attachment, file)
+                                written = True
+                    if written or dryRun:
+                        sprint(f'{dryRunPrefix if not written else ""}Done writing.')
+                    sprintPad()
 
                     if not confirm('add another', emptyMeansNo=True):
                         done = True
@@ -540,29 +680,34 @@ def runCommand(**kwargs):
 
         if (inspecting or extractingAttachments or mixingAttachments or paking) and srcPakPath:
             sprintPad()
-            sprint(f'Resolving source pak content directory...')
+            sprint(f'Resolving source pak content folder...')
             if not gameName:
-                printError(f'Cannot resolve source pak content directory (missing `gameName`)')
+                printError(f'Cannot resolve source pak content folder (missing `gameName`)')
             else:
                 if not os.path.exists(srcPakPath):
                     if not pathlib.Path(srcPakPath).suffix:
-                        srcPakPath = f'{srcPakPath}{PakchunkFileExtension}'
-                        printWarning(f'Trying `srcPakPath` with "{PakchunkFileExtension}" extension ("{srcPakPath})')
+                        srcPakPath = f'{srcPakPath}{PakchunkFilenameSuffix}'
+                        printWarning(f'Trying `srcPakPath` with "{PakchunkFilenameSuffix}" extension ("{srcPakPath})')
 
                 if not os.path.exists(srcPakPath):
                     printError(f'`srcPakPath` ("{srcPakPath}") does not exist')
                 elif os.path.isdir(srcPakPath):
                     srcPakDir = srcPakPath
-                elif pathlib.Path(srcPakPath).suffix.lower() == PakchunkFileExtension:
+                elif pathlib.Path(srcPakPath).suffix.lower() == PakchunkFilenameSuffix:
                     srcPakPathInfo = getPathInfo(srcPakPath)
                     srcPakDir = getPathInfo(os.path.join(ensurePakingDir(), srcPakPathInfo['stem']))['best']
                     sprintPad()
-                    sprint(f'Unpaking "{srcPakPath}" to "{srcPakDir}')
+                    sprint(f'{dryRunPrefix}Unpaking "{srcPakPath}" to "{srcPakDir}')
                     if os.path.exists(unrealPakPath):
                         ensurePakingDir()
-                        if readyToWrite(srcPakDir):
-                            unrealUnpak(srcPakPath, srcPakDir, gameName, unrealPakPath)
-                        sprint('Done unpaking.')
+                        shouldWrite = not dryRun or (not nonInteractive and confirm(f'write to source pak folder ("{srcPakDir}") despite dry run', pad=True, emptyMeansNo=True))
+                        written = False
+                        if shouldWrite:
+                            if readyToWrite(srcPakDir, dryRunHere=False):
+                                unrealUnpak(srcPakPath, srcPakDir, gameName, unrealPakPath)
+                                written = True
+                        if written or dryRun:
+                            sprint(f'{dryRunPrefix if not written else ""}Done unpaking.')
                         sprintPad()
                     else:
                         printError(f'`unrealPakPath` ("{unrealPakPath})" does not exist')
@@ -570,11 +715,12 @@ def runCommand(**kwargs):
                 if srcPakDir:
                     srcPakPathInfo = getPathInfo(srcPakDir)
                     srcPakStem = srcPakPathInfo['stem']
-                    srcPakFilenameParts = getPackchunkFilenameParts(srcPakStem)
+                    srcPakFilenameParts = pakchunkRefnameToParts(srcPakStem)
                     if srcPakFilenameParts:
                         srcPakNumber = srcPakFilenameParts['number']
                         srcPakName = srcPakFilenameParts.get('name', '')
                         srcPakPlatform = srcPakFilenameParts.get('platform', '')
+                        srcPakPlatformSuffix = srcPakFilenameParts.get('platformSuffix', '')
                         if not srcPakName:
                             printWarning('Source pakchunk filename has no name')
                         if not srcPakPlatform:
@@ -601,7 +747,7 @@ def runCommand(**kwargs):
                         sprint(f'Discovered {len(srcPakContentAssetPathsMap)} pak assets ({len(srcPakContentPaths)} files).')
                         sprintPad()
                     else:
-                        printError(f'Pak content directory ("{srcPakContentDir}") does not exist')
+                        printError(f'Pak content folder ("{srcPakContentDir}") does not exist')
                         srcPakContentDir = ''
 
         if (inspecting or extractingAttachments or mixingAttachments or paking) and unrealProjectDir:
@@ -609,9 +755,9 @@ def runCommand(**kwargs):
                 printWarning(f'Not looking for unreal project cooked content because `srcPakDir` has precedence.')
             else:
                 sprintPad()
-                sprint(f'Resolving unreal project cooked content directory...')
+                sprint(f'Resolving unreal project cooked content folder...')
                 if not gameName:
-                    printError(f'Cannot resolve unreal project cooked content directory (missing `gameName`)')
+                    printError(f'Cannot resolve unreal project cooked content folder (missing `gameName`)')
                 else:
                     cookedContentDir = getUnrealProjectCookedContentDir(unrealProjectDir, destPlatform, gameName)
                     sprintPad()
@@ -634,63 +780,63 @@ def runCommand(**kwargs):
                         sprint(f'Discovered {len(cookedContentAssetPathsMap)} cooked assets ({len(cookedContentPaths)} files).')
                         sprintPad()
                     else:
-                        printError(f'Cooked content directory ("{cookedContentDir}") does not exist')
+                        printError(f'Cooked content folder ("{cookedContentDir}") does not exist')
                         cookedContentDir = ''
 
-        if inspecting or extractingAttachments or mixingAttachments:
+        if (inspecting and customizationItemDbPath) or extractingAttachments or mixingAttachments:
             sprintPad()
             sprint(f'Resolving {CustomizationItemDbAssetName} path...')
 
-            customizationItemDbPath = getPathInfo(settings.get('customizationItemDbPath', ''))['normalized']
+            customizationItemDbPath = getPathInfo(customizationItemDbPath)['normalized']
             if not customizationItemDbPath:
-                customizationItemDbPath = DefaultCustomizationItemDbPath
-                printWarning(f'`customizationItemDbPath` not specified. Defaulting to: "{customizationItemDbPath}"')
-
-            customizationItemDbContentDirRelativePath = getContentDirRelativePath(customizationItemDbPath)
-            if customizationItemDbContentDirRelativePath is None:
-                sprint(f'Resolved path: "{customizationItemDbPath}"')
+                if extractingAttachments or mixingAttachments:
+                    printError('Missing or invalid `customizationItemDbPath`')
             else:
-                sprint(f'Content directory relative path detected: "{customizationItemDbPath}"')
+                customizationItemDbContentDirRelativePath = getContentDirRelativePath(customizationItemDbPath)
+                if customizationItemDbContentDirRelativePath is None:
+                    sprint(f'Resolved path: "{customizationItemDbPath}"')
+                else:
+                    sprint(f'Content folder relative path detected: "{customizationItemDbPath}"')
 
-                if not getPathInfo(customizationItemDbContentDirRelativePath)['suffixLower']:
-                    customizationItemDbContentDirRelativePath = f'{customizationItemDbContentDirRelativePath}.uasset'
-                    sprint(f'Adding ".uasset" suffix: "{customizationItemDbContentDirRelativePath}"')
+                    if not getPathInfo(customizationItemDbContentDirRelativePath)['suffixLower']:
+                        customizationItemDbContentDirRelativePath = f'{customizationItemDbContentDirRelativePath}.uasset'
+                        sprint(f'Adding ".uasset" suffix: "{customizationItemDbContentDirRelativePath}"')
 
-                customizationItemDbPathUnaltered = customizationItemDbPath
-                customizationItemDbPath = ''
+                    customizationItemDbPathUnaltered = customizationItemDbPath
+                    customizationItemDbPath = ''
 
-                allowTryingAsNormalPath = False
+                    allowTryingAsNormalPath = False
 
-                if not customizationItemDbPath and srcPakPath:
-                    if srcPakContentDir:
-                        customizationItemDbPath = getPathInfo(os.path.join(srcPakContentDir, customizationItemDbContentDirRelativePath))['best']
-                        if not os.path.exists(customizationItemDbPath):
-                            printWarning(f'Content dir relative path ("{customizationItemDbPath}") does not exist')
-                            customizationItemDbPath = ''
-                    else:
-                        message = 'Content directory relative path cannot be resolved because `srcPakPath` is missing content'
-                        if allowTryingAsNormalPath:
-                            printWarning(message)
+                    if not customizationItemDbPath and srcPakPath:
+                        if srcPakContentDir:
+                            customizationItemDbPath = getPathInfo(os.path.join(srcPakContentDir, customizationItemDbContentDirRelativePath))['best']
+                            if not os.path.exists(customizationItemDbPath):
+                                printWarning(f'Content dir relative path ("{customizationItemDbPath}") does not exist')
+                                customizationItemDbPath = ''
                         else:
-                            printError(message)
-                elif not customizationItemDbPath and unrealProjectDir:
-                    if cookedContentDir:
-                        customizationItemDbPath = getPathInfo(os.path.join(cookedContentDir, customizationItemDbContentDirRelativePath))['best']
-                        if not os.path.exists(customizationItemDbPath):
-                            printWarning(f'Content dir relative path ("{customizationItemDbPath}") does not exist')
-                            customizationItemDbPath = ''
-                    else:
-                        message = 'Content directory relative path cannot be resolved because `unrealProjectDir` is missing content'
-                        if allowTryingAsNormalPath:
-                            printWarning(message)
+                            message = 'Content folder relative path cannot be resolved because `srcPakPath` is missing content'
+                            if allowTryingAsNormalPath:
+                                printWarning(message)
+                            else:
+                                printError(message)
+                    elif not customizationItemDbPath and unrealProjectDir:
+                        if cookedContentDir:
+                            customizationItemDbPath = getPathInfo(os.path.join(cookedContentDir, customizationItemDbContentDirRelativePath))['best']
+                            if not os.path.exists(customizationItemDbPath):
+                                printWarning(f'Content dir relative path ("{customizationItemDbPath}") does not exist')
+                                customizationItemDbPath = ''
                         else:
-                            printError(message)
+                            message = 'Content folder relative path cannot be resolved because `unrealProjectDir` is missing content'
+                            if allowTryingAsNormalPath:
+                                printWarning(message)
+                            else:
+                                printError(message)
 
-                if customizationItemDbPath:
-                    sprint(f'Resolved to "{customizationItemDbPath}".')
-                elif allowTryingAsNormalPath:
-                    customizationItemDbPath = customizationItemDbPathUnaltered
-                    printWarning(f'Trying `customizationItemDbPath` as normal file path "{customizationItemDbPath}"')
+                    if customizationItemDbPath:
+                        sprint(f'Resolved to "{customizationItemDbPath}".')
+                    elif allowTryingAsNormalPath:
+                        customizationItemDbPath = customizationItemDbPathUnaltered
+                        printWarning(f'Trying `customizationItemDbPath` as normal file path "{customizationItemDbPath}"')
 
         if customizationItemDbPath:
             customizationItemDbPathInfo = getPathInfo(customizationItemDbPath)
@@ -707,12 +853,17 @@ def runCommand(**kwargs):
                     f"{settingsPathInfo['stem']}_{customizationItemDbPathInfo['stem']}-unaltered.json",
                 ))['best']
                 sprintPad()
-                sprint(f'Converting "{customizationItemDbPath}" to JSON, writing "{customizationItemDbJsonPath}"')
+                sprint(f'{dryRunPrefix}Converting "{customizationItemDbPath}" to JSON, writing "{customizationItemDbJsonPath}"')
                 if os.path.exists(uassetGuiPath):
-                    if readyToWrite(customizationItemDbJsonPath, overwrite=True):
-                        uassetToJson(customizationItemDbPath, customizationItemDbJsonPath, uassetGuiPath)
-                        sprint('Done converting.')
-                        sprintPad()
+                    shouldWrite = not dryRun or (not nonInteractive and confirm(f'write {CustomizationItemDbAssetName} JSON ("{customizationItemDbJsonPath}") despite dry run', pad=True, emptyMeansNo=True))
+                    written = False
+                    if shouldWrite:
+                        if readyToWrite(customizationItemDbJsonPath, overwrite=True, dryRunHere=False):
+                            uassetToJson(customizationItemDbPath, customizationItemDbJsonPath, uassetGuiPath)
+                            written = True
+                    if written or dryRun:
+                        sprint(f'{dryRunPrefix if not written else ""}Done converting.')
+                    sprintPad()
                 else:
                     printError(f'`uassetGuiPath` ("{uassetGuiPath})" does not exist')
                     customizationItemDbJsonPath = ''
@@ -743,11 +894,16 @@ def runCommand(**kwargs):
                         f"{settingsPathInfo['stem']}_{customizationItemDbPathInfo['stem']}-unaltered.yaml",
                     ))['best']
                     sprintPad()
-                    sprint(f'Writing unaltered {CustomizationItemDbAssetName} to "{outPath}"')
-                    if readyToWrite(outPath, overwrite=True):
-                        with open(outPath, 'w') as file:
-                            yamlDump(customizationItemDb, file)
-                    sprint(f'Done writing.')
+                    sprint(f'{dryRunPrefix}Writing unaltered {CustomizationItemDbAssetName} to "{outPath}"')
+                    shouldWrite = not dryRun
+                    written = False
+                    if shouldWrite:
+                        if readyToWrite(outPath, overwrite=True, dryRunHere=False):
+                            with open(outPath, 'w') as file:
+                                yamlDump(customizationItemDb, file)
+                                written = True
+                    if written or dryRun:
+                        sprint(f'{dryRunPrefix if not written else ""}Done writing.')
                     sprintPad()
 
         if inspecting or mixingAttachments or renamingAttachmentFiles:
@@ -798,12 +954,13 @@ def runCommand(**kwargs):
                                 if newFilename == filename:
                                     sprint(f'rename not needed (already named correctly).')
                                 else:
-                                    sprint(f'Renaming {filename} to {newFilename}')
+                                    sprint(f'{dryRunPrefix}Renaming {filename} to {newFilename}')
                                     newFilePath = getPathInfo(os.path.join(ensureAttachmentsDir(), newFilename))['best']
                                     if os.path.exists(newFilePath):
                                         raise ValueError(f'Could not rename {filename} to {newFilename} (file already exists)')
 
-                                    os.rename(filePath, newFilePath)
+                                    if not dryRun:
+                                        os.rename(filePath, newFilePath)
                                     attachmentsRenamed[filename] = newFilename
                     except Exception as e:
                         printError(e)
@@ -838,7 +995,7 @@ def runCommand(**kwargs):
                         return combo
                     sprint(f"skip {f'{category} ' if (category and False) else ''}combo {'=' if isExact else '⊇'} {','.join(mySorted(combo))}: {','.join(baseModels) or '*'}{f' ({info})' if info else ''}")
 
-                for category, combosList in settings.get('combosToSkip', {}).items():
+                for category, combosList in combosToSkip.items():
                     if category not in categoryCombinationSubsetsToSkip:
                         categoryCombinationSubsetsToSkip[category] = {}
 
@@ -880,7 +1037,7 @@ def runCommand(**kwargs):
                     sprintPad()
                     sprint('Reading mutuallyExclusive...')
 
-                for category, groups in settings.get('mutuallyExclusive', {}).items():
+                for category, groups in mutuallyExclusive.items():
                     if category not in categoryCombinationSubsetsToSkip:
                         categoryCombinationSubsetsToSkip[category] = {}
 
@@ -903,7 +1060,7 @@ def runCommand(**kwargs):
                     sprintPad()
                     sprint('Reading attachmentConflicts...')
 
-                for category, attachmentConflictsMap in settings.get('attachmentConflicts', {}).items():
+                for category, attachmentConflictsMap in attachmentConflicts.items():
                     if category not in categoryCombinationSubsetsToSkip:
                         categoryCombinationSubsetsToSkip[category] = {}
 
@@ -926,7 +1083,7 @@ def runCommand(**kwargs):
                     sprint('Reading equivalentParts...')
 
                 categoryComboEquivalentMap = {}
-                for category, equivalentCombosMap in settings.get('equivalentParts', {}).items():
+                for category, equivalentCombosMap in equivalentParts.items():
                     if category not in categoryComboEquivalentMap:
                         categoryComboEquivalentMap[category] = {}
 
@@ -976,7 +1133,7 @@ def runCommand(**kwargs):
                     sprintPad()
                     sprint('Reading supersetParts...')
 
-                for category, attachmentProperSubsetsMap in settings.get('supersetParts', {}).items():
+                for category, attachmentProperSubsetsMap in supersetParts.items():
                     for attachment, properSubsets in attachmentProperSubsetsMap.items():
                         checkAttachmentName(category, attachment, f'supersetParts->superset')
                         for groupIndex, parts in enumerate(properSubsets):
@@ -1105,7 +1262,7 @@ def runCommand(**kwargs):
                         if openParenIndex > -1:
                             closeParenIndex = modelDisplayName.find(')', openParenIndex + 1)
                             if closeParenIndex > -1:
-                                attachmentDisplayNamesString = modelDisplayName[openParenIndex + 1:closeParenIndex]
+                                attachmentDisplayNamesString = modelDisplayName[(openParenIndex + 1):closeParenIndex]
 
                         if debug:
                             sprint(f'Potential attachments display names string: {attachmentDisplayNamesString}')
@@ -1153,7 +1310,7 @@ def runCommand(**kwargs):
                                 if os.path.exists(filePath):
                                     printWarning(f'Skipping attachment {attachmentIndex + 1} (file already exists): "{filePath}"', pad=False)
                                 else:
-                                    sprint(f'Exporting attachment {attachmentIndex + 1}: {attachmentId} ({attachmentDisplayName}) to "{filePath}"')
+                                    sprint(f'{dryRunPrefix}Exporting attachment {attachmentIndex + 1}: {attachmentId} ({attachmentDisplayName}) to "{filePath}"')
 
                                     attachmentInfo = {
                                         'attachmentId': attachmentId,
@@ -1162,8 +1319,9 @@ def runCommand(**kwargs):
                                         'attachmentData': attachmentData,
                                     }
 
-                                    with open(filePath, 'w') as file:
-                                        yamlDump(attachmentInfo, file)
+                                    if not dryRun:
+                                        with open(filePath, 'w') as file:
+                                            yamlDump(attachmentInfo, file)
 
                                     attachmentsCreated.append(filePath)
                     elif mixingAttachments:
@@ -1326,23 +1484,33 @@ def runCommand(**kwargs):
                         f"{settingsPathInfo['stem']}_{customizationItemDbPathInfo['stem']}-altered.json",
                     ))['best']
                     sprintPad()
-                    sprint(f'Writing altered {CustomizationItemDbAssetName} to "{jsonOutPath}"')
-                    if readyToWrite(jsonOutPath, overwrite=True):
-                        with open(jsonOutPath, 'w') as file:
-                            jsonDump(customizationItemDb, file)
-                        sprint('Done.')
+                    sprint(f'{dryRunPrefix}Writing altered {CustomizationItemDbAssetName} to "{jsonOutPath}"')
+                    shouldWrite = not dryRun
+                    written = False
+                    if shouldWrite:
+                        if readyToWrite(jsonOutPath, overwrite=True, dryRunHere=False):
+                            with open(jsonOutPath, 'w') as file:
+                                jsonDump(customizationItemDb, file)
+                                written = True
+                    if written or dryRun:
+                        sprint(f'{dryRunPrefix if not written else ""}Done writing.')
                     sprintPad()
 
                     if customizationItemDbPathInfo['suffixLower'] == '.uasset':
                         sprintPad()
-                        sprint(f'Writing altered {CustomizationItemDbAssetName} to "{customizationItemDbPath}"')
+                        sprint(f'{dryRunPrefix}Writing altered {CustomizationItemDbAssetName} to "{customizationItemDbPath}"')
                         if os.path.exists(uassetGuiPath):
-                            if readyToWrite(customizationItemDbPath):
-                                jsonToUasset(jsonOutPath, customizationItemDbPath, uassetGuiPath)
-                                sprint('Done.')
+                            shouldWrite = not dryRun
+                            written = False
+                            if shouldWrite:
+                                if readyToWrite(customizationItemDbPath, dryRunHere=False):
+                                    jsonToUasset(jsonOutPath, customizationItemDbPath, uassetGuiPath)
+                                    written = True
+                            if written or dryRun:
+                                sprint(f'{dryRunPrefix if not written else ""}Done writing.')
+                            sprintPad()
                         else:
                             printError(f'`uassetGuiPath` ("{uassetGuiPath})" does not exist')
-                        sprintPad()
 
                     # TODO: this should be optional
                     if True:
@@ -1351,11 +1519,16 @@ def runCommand(**kwargs):
                             f"{settingsPathInfo['stem']}_{customizationItemDbPathInfo['stem']}-altered.yaml",
                         ))['best']
                         sprintPad()
-                        sprint(f'Writing altered {CustomizationItemDbAssetName} to "{yamlOutPath}"')
-                        if readyToWrite(yamlOutPath, overwrite=True):
-                            with open(yamlOutPath, 'w') as file:
-                                yamlDump(customizationItemDb, file)
-                            sprint('Done.')
+                        sprint(f'{dryRunPrefix}Writing altered {CustomizationItemDbAssetName} to "{yamlOutPath}"')
+                        shouldWrite = not dryRun
+                        written = False
+                        if shouldWrite:
+                            if readyToWrite(yamlOutPath, overwrite=True, dryRunHere=False):
+                                with open(yamlOutPath, 'w') as file:
+                                    yamlDump(customizationItemDb, file)
+                                    written = True
+                        if written or dryRun:
+                            sprint(f'{dryRunPrefix if not written else ""}Done writing.')
                         sprintPad()
 
         if paking or inspecting:
@@ -1373,7 +1546,13 @@ def runCommand(**kwargs):
                     printError('Missing or invalid `destPakNumber`')
 
                 if destPakNumber >= 0:
-                    destPakStem = toPakchunkStem(destPakNumber, destPakName, destPlatform)
+                    destPakStem = pakchunkRefnamePartsToRefname(
+                        destPakNumber,
+                        destPakName,
+                        destPlatform,
+                        destPakPlatformSuffix,
+                        addSuffix=False,
+                    )
                     destPakDir = getPathInfo(os.path.join(ensurePakingDir(), destPakStem))['best']
 
                     sprintPad()
@@ -1383,13 +1562,13 @@ def runCommand(**kwargs):
                     if gameName:
                         destPakContentDir = getPakContentDir(destPakDir, gameName)
                     else:
-                        message = f'Cannot resolve destination pak content directory (missing `gameName`)'
+                        message = f'Cannot resolve destination pak content folder (missing `gameName`)'
                         if paking:
                             printError(message)
                         else:
                             printWarning(message)
 
-                    destPakFilename = f'{destPakStem}{PakchunkFileExtension}'
+                    destPakFilename = f'{destPakStem}{PakchunkFilenameSuffix}'
                     destPakPath = getPathInfo(os.path.join(ensurePakingDir(), destPakFilename))['best']
 
                 if not destPakAssets:
@@ -1408,7 +1587,7 @@ def runCommand(**kwargs):
                 shouldSearchForSrcAssets = True
 
                 if not srcContentDir:
-                    message = f'Missing source content directory for paking'
+                    message = f'Missing source content folder for paking'
                     if paking:
                         printError(message)
                         shouldSearchForSrcAssets = False
@@ -1441,15 +1620,15 @@ def runCommand(**kwargs):
 
                     if paking and not missingAssets:
                         if not destPakContentDir:
-                            printError(f'Cannot create pak because destination content directory is missing')
+                            printError(f'Cannot create pak because destination content folder is missing')
                         else:
                             assert destPakDir
                             sprintPad()
-                            sprint(f'Copying {srcFileCount} files from "{srcContentDir}" to "{destPakContentDir}"')
+                            sprint(f'{dryRunPrefix}Copying {srcFileCount} files from "{srcContentDir}" to "{destPakContentDir}"')
                             ensurePakingDir()
                             sameDir = srcPakDir == destPakDir
                             if sameDir:
-                                printWarning(f'Source and destination pak directory is the same. Files not in asset list will be removed.')
+                                printWarning(f'Source and destination pak folder is the same. {dryRunPrefix}Files not in asset list will be removed.')
                             if readyToWrite(destPakDir, delete=not sameDir):
                                 def writeFiles(srcContentDir):
                                     ensureDir(destPakContentDir, warnIfNotExist=False)
@@ -1460,17 +1639,18 @@ def runCommand(**kwargs):
                                             destPathFileInfo = getPathInfo(os.path.join(destPakContentDir, relFilePath))
                                             ensureDir(destPathFileInfo['dir'], warnIfNotExist=False)
                                             destPath = destPathFileInfo['best']
-                                            sprint(f'Copying file to "{destPath}"')
-                                            shutil.copy(srcPath, destPath)
-
+                                            sprint(f'{dryRunPrefix}Copying file to "{destPath}"')
+                                            if not dryRun:
+                                                shutil.copy(srcPath, destPath)
                                 if sameDir:
                                     with tempfile.TemporaryDirectory(
                                         dir=pakingDir,
                                         prefix=f'{destPakStem}_',
                                     ) as tempDir:
-                                        printWarning(f'Creating temporary source pak directory ("{tempDir}") for file copying')
-                                        os.rmdir(tempDir)
-                                        shutil.move(srcPakDir, tempDir)
+                                        printWarning(f'{dryRunPrefix}Temporarily moving "{srcPakDir}" to temporary source pak folder ("{tempDir}") for file copying')
+                                        if not dryRun:
+                                            os.rmdir(tempDir)
+                                            shutil.move(srcPakDir, tempDir)
                                         assert gameName
                                         try:
                                             writeFiles(getPakContentDir(tempDir, gameName))
@@ -1486,10 +1666,11 @@ def runCommand(**kwargs):
 
                                 assert destPakPath
                                 sprintPad()
-                                sprint(f'Paking "{destPakDir}" into "{destPakPath}"')
+                                sprint(f'{dryRunPrefix}Paking "{destPakDir}" into "{destPakPath}"')
                                 if os.path.exists(unrealPakPath):
-                                    unrealPak(destPakDir, destPakPath, unrealPakPath)
-                                    sprint(f'Done paking.')
+                                    if not dryRun:
+                                        unrealPak(destPakDir, destPakPath, unrealPakPath)
+                                    sprint(f'{dryRunPrefix}Done paking.')
                                 else:
                                     printError(f'`unrealPakPath` ("{unrealPakPath})" does not exist')
                                 sprintPad()
@@ -1497,9 +1678,14 @@ def runCommand(**kwargs):
             sprintPad()
             sprint(f'Analyzing mod configuration...')
             sprintPad()
-            sprint(f'Resolving game Paks directory path...')
+            sprint(f'Resolving game Paks folder...')
+
+            # don't do the install if there are errors configuring mods
+            skipInstall = False
+
             if not gameDir:
-                message = f'Cannot resolve game Paks folder (missing `gameDir`)'
+                message = f'Cannot resolve game Paks folder (missing or invalid `gameDir`)'
+                skipInstall = True
                 if installingMods:
                     printError(message)
                 else:
@@ -1507,159 +1693,173 @@ def runCommand(**kwargs):
 
             if not gameName:
                 message = f'Cannot resolve game Paks folder (missing `gameName`)'
+                skipInstall = True
                 if installingMods:
                     printError(message)
                 else:
                     printWarning(message)
 
-            reservedPakchunks = [p.lower() for p in settings.get('reservedPakchunks', [])]
-            if not reservedPakchunks:
-                printWarning(f'Missing or empty `reservedPakchunks`')
+            reservedPakchunksFilenameLower = []
+            for refI, pakchunkRefname in enumerate(reservedPakchunks):
+                fullFilename = pakchunkRefnameToFilename(pakchunkRefname)
+                if not fullFilename:
+                    printError(f'`reservedPakchunks[{refI}] is not a valid pakchunk reference ("{pakchunkRefname})')
+                    skipInstall = True
+                else:
+                    if debug and fullFilename.lower() != pakchunkRefname.lower():
+                        print(f'Resolved reserved pakchunk reference from "{pakchunkRefname}" to "{fullFilename}"')
+                    reservedPakchunksFilenameLower.append(fullFilename.lower())
 
             if gameDir and gameName:
                 gamePaksDir = getGamePaksDir(gameDir, gameName)
                 sprint(f'Resolved.')
                 sprintPad()
-                sprint(f'Scanning "{gamePaksDir}" for pakchunk files...')
-                allPakchunks = []
-                loggingReserved = debug
-                for relPath in listFilesRecursively(gamePaksDir):
-                    relPathPathInfo = getPathInfo(relPath, gamePaksDir)
-                    if relPathPathInfo['basename'].lower().startswith('pakchunk'):
-                        allPakchunks.append(relPath)
-                        reserved = relPath.lower() in reservedPakchunks
-                        if not reserved:
-                            gamePakchunks.append(relPath)
-                        if not reserved or loggingReserved:
-                            sprint(f'{len(allPakchunks if loggingReserved else gamePakchunks)} - {relPath}{" -- RESERVED" if reserved else ""}')
-                    else:
-                        printWarning(f'Non-pakchunk file in Paks folder: "{relPath}"')
-                sprint('Done.')
-                sprintPad()
-                sprint(f'Discovered {len(allPakchunks)} pakchunks ({len(allPakchunks) - len(gamePakchunks)} reserved, {len(gamePakchunks)} configurable)')
+                if not os.path.isdir(gamePaksDir):
+                    printError(f'Game paks folder does not exist ("{gamePaksDir}")')
+                else:
+                    sprint(f'Scanning "{gamePaksDir}" for pakchunk files...')
+                    allPakchunks = []
+                    loggingReserved = debug
+                    for relPath in listFilesRecursively(gamePaksDir):
+                        relPathInfo = getPathInfo(relPath, gamePaksDir)
+                        pakchunkFilenameParts = pakchunkRefnameToParts(relPathInfo['basename'])
+                        if pakchunkFilenameParts:
+                            allPakchunks.append(relPath)
+                            reserved = relPath.lower() in reservedPakchunksFilenameLower
+                            if not reserved:
+                                stem = pakchunkRefnamePartsDictToRefname(pakchunkFilenameParts, addSuffix=False)
+                                relStemPath = getPathInfo(os.path.join(relPathInfo['relativeDir'], stem), gamePaksDir)['relative']
+                                gamePakchunks.append(relStemPath)
+                            if not reserved or loggingReserved:
+                                sprint(f'{len(allPakchunks if loggingReserved else gamePakchunks)} - {relPath}{" -- RESERVED" if reserved else ""}')
+                        else:
+                            printWarning(f'Non-pakchunk file discovered in Paks folder: "{relPath}"')
+                    sprint('Done.')
+                    sprintPad()
+                    sprint(f'Discovered {len(allPakchunks)} pakchunks ({len(allPakchunks) - len(gamePakchunks)} reserved, {len(gamePakchunks)} swappable)')
 
             sprintPad()
             sprint(f'Scanning "{pakingDir}" for available pakchunks...')
             ensurePakingDir()
             for entry in os.scandir(pakingDir):
-                if entry.name.lower().startswith('pakchunk') and entry.name.lower().endswith(PakchunkFileExtension):
-                    if entry.name not in pakingDirPakchunks:
-                        pakingDirPakchunks.append(entry.name)
-                        sprint(f'{len(pakingDirPakchunks)} - {entry.name}')
-            sprint('Done.')
+                pakchunkFilenameParts = pakchunkRefnameToParts(entry.name)
+                if pakchunkFilenameParts and pakchunkFilenameParts.get('suffix', None):
+                    stem = pakchunkRefnamePartsDictToRefname(pakchunkFilenameParts, addSuffix=False)
+                    if stem not in pakingDirPakchunkStems:
+                        pakingDirPakchunkStems.append(stem)
+                        sprint(f'{len(pakingDirPakchunkStems)} - {stem}')
+            sprint(f'Discovered {len(pakingDirPakchunkStems)} pakchunks.')
             sprintPad()
-            sprint(f'Discovered {len(pakingDirPakchunks)} pakchunks.')
-            sprintPad()
-            sprint(f'Calculating mods to be active...')
+            sprint(f'Determining target active mod set...')
 
-            modGroupNamePakchunksMap = settings.get('modGroups', {})
-            modConfigNameGroupsMap = settings.get('modConfigs', {})
-            activeModConfigName = settings.get('activeModProfile', '')
-
-            hasError = False
-            if not activeModConfigName:
-                printWarning('No active mod config (missing `activeModProfile`)')
-            else:
+            if activeModConfigName:
                 sprintPad()
                 sprint(f'Active config: "{activeModConfigName}"')
                 if activeModConfigName not in modConfigNameGroupsMap:
-                    printError(f'Missing mod config "{activeModConfigName}" in `modConfigs`')
-                    hasError = True
+                    printError(f'Mod config "{activeModConfigName}" not found in `modConfigs`')
+                    skipInstall = True
                 else:
                     for groupName in modConfigNameGroupsMap[activeModConfigName]:
                         if groupName not in modGroupNamePakchunksMap:
-                            printError(f'Missing mod group "{groupName}" in `modGroups`')
-                            hasError = True
+                            printError(f'Mod group "{groupName}" not found in `modGroups`')
+                            skipInstall = True
                         else:
-                            for pakchunkIndex, pakchunk in enumerate(modGroupNamePakchunksMap[groupName]):
-                                modConfigPath = f'groups.{groupName}[{pakchunkIndex + 1}]: {pakchunk}'
-                                if pakchunk in modsToBeActive:
+                            for pakchunkIndex, pakchunkRefname in enumerate(modGroupNamePakchunksMap[groupName]):
+                                pakchunkStem = pakchunkRefnameToFilename(pakchunkRefname, defaultPlatform=destPlatform, addSuffix=False)
+                                modConfigPath = f'groups.{groupName}[{pakchunkIndex}]: {pakchunkStem}'
+                                if pakchunkStem in targetActiveMods:
                                     printWarning(f'Already added mod to be active: {modConfigPath}')
                                 else:
-                                    modsToBeActive.append(pakchunk)
-                                    sprint(f'{len(modsToBeActive)} - {modConfigPath}')
+                                    targetActiveMods.append(pakchunkStem)
+                                    sprint(f'{len(targetActiveMods)} - {modConfigPath}')
+                sprintPad()
+
+            sprint(f'Target active mods: {len(targetActiveMods)}.')
+            sprintPad()
+
+            sprintPad()
+            sprint(f'Locating pakchunk sources...')
+            if not gamePaksDir:
+                if installingMods:
+                    printError('Could not resolve game Paks folder')
 
             if gamePaksDir:
-                sprintPad()
-                sprint(f'Locating pakchunk sources...')
                 notFoundPakchunks = []
                 pakchunkSourceMap = {}
-                gamePakchunkFilenameRelPathMap = {}
-                for relPath in gamePakchunks:
-                    filename = os.path.basename(relPath)
-                    gamePakchunkFilenameRelPathMap[filename] = relPath
+                gamePakchunkStemRelPathMap = {}
+                for relStemPath in gamePakchunks:
+                    pakchunkStem = os.path.basename(relStemPath)
+                    gamePakchunkStemRelPathMap[pakchunkStem] = relStemPath
 
-                for relPath in modsToBeActive:
-                    filename = os.path.basename(relPath)
-                    if filename in pakingDirPakchunks:
-                        pakchunkSourceMap[relPath] = source = normPath(os.path.join(pakingDir, filename))
-                    elif filename in gamePakchunkFilenameRelPathMap:
-                        pakchunkSourceMap[relPath] = source = normPath(os.path.join(gamePaksDir, gamePakchunkFilenameRelPathMap[filename]))
+                for relStemPath in targetActiveMods:
+                    pakchunkStem = os.path.basename(relStemPath)
+                    if pakchunkStem in pakingDirPakchunkStems:
+                        source = pakchunkSourceMap[relStemPath] = normPath(os.path.join(pakingDir, pakchunkStem))
+                    elif pakchunkStem in gamePakchunkStemRelPathMap:
+                        source = pakchunkSourceMap[relStemPath] = normPath(os.path.join(gamePaksDir, gamePakchunkStemRelPathMap[pakchunkStem]))
                     else:
-                        printError(f'Pakchunk (to install) not found: {filename}')
-                        hasError = True
-                        notFoundPakchunks.append(filename)
+                        printError(f'Pakchunk (to install) not found: {pakchunkStem}')
+                        skipInstall = True
+                        notFoundPakchunks.append(pakchunkStem)
                         source = None
 
                     if source is not None and debug:
-                        sprint(f'"{relPath}" <- "{source}"')
+                        sprint(f'"{relStemPath}" <- "{source}"')
 
-                pakchunksToActivate = [p for p in modsToBeActive if p not in gamePakchunks]
+                pakchunksToActivate = [p for p in targetActiveMods if p not in gamePakchunks]
                 sprintPad()
                 sprint(f'Pakchunks to activate: {len(pakchunksToActivate)}')
-                for i, pakchunkRelPath in enumerate(pakchunksToActivate):
-                    sprint(f'{i + 1} - {pakchunkRelPath}')
+                for i, pakchunkRelStemPath in enumerate(pakchunksToActivate):
+                    sprint(f'{i + 1} - {pakchunkRelStemPath}')
 
-                pakchunksToDeactivate = [p for p in gamePakchunks if p not in modsToBeActive]
+                pakchunksToDeactivate = [p for p in gamePakchunks if p not in targetActiveMods]
                 sprintPad()
                 sprint(f'Pakchunks to deactivate: {len(pakchunksToDeactivate)}')
-                for i, pakchunkRelPath in enumerate(pakchunksToDeactivate):
-                    sprint(f'{i + 1} - {pakchunkRelPath}')
+                for i, pakchunkRelStemPath in enumerate(pakchunksToDeactivate):
+                    sprint(f'{i + 1} - {pakchunkRelStemPath}')
 
-                if not hasError and installingMods:
-                    dryRun = False
-
-                    noChanges = True
+                if not skipInstall and installingMods:
+                    madeChanges = False
 
                     sprintPad()
-                    sprint(f'Moving mods between "{pakingDir}" and "{gamePaksDir}"...')
-                    for pakchunkRelPath in modsToBeActive:
-                        source = pakchunkSourceMap[pakchunkRelPath]
+                    sprint(f'{dryRunPrefix}Moving mods between "{pakingDir}" and "{gamePaksDir}"...')
+                    for pakchunkRelStemPath in targetActiveMods:
+                        source = f'{pakchunkSourceMap[pakchunkRelStemPath]}{PakchunkFilenameSuffix}'
+                        pakchunkRelPath = f'{pakchunkRelStemPath}{PakchunkFilenameSuffix}'
                         dest = normPath(os.path.join(gamePaksDir, pakchunkRelPath))
-                        if not os.path.exists(dest) or not os.path.samefile(source, dest):
-                            sprint(f'Moving "{source}" to "[Paks]/{pakchunkRelPath}"')
-                            if not dryRun:
-                                if readyToWrite(dest):
+                        if not os.path.exists(source):
+                            printError(f'Mod to make active not found "{source}"')
+                        elif not os.path.exists(dest) or not os.path.samefile(source, dest):
+                            sprint(f'{dryRunPrefix}Moving "{source}" to "[Paks]/{pakchunkRelPath}"')
+                            if readyToWrite(dest):
+                                if not dryRun:
                                     shutil.move(source, dest)
-                                    noChanges = False
-                                else:
-                                    printWarning(f'Not allowed to overwrite "{pakchunkRelPath}"')
+                                madeChanges = True
+                            else:
+                                printWarning(f'Not allowed to overwrite "{pakchunkRelPath}"')
 
-                    for pakchunkRelPath in pakchunksToDeactivate:
-                        filename = os.path.basename(pakchunkRelPath)
+                    for pakchunkRelStemPath in pakchunksToDeactivate:
+                        pakchunkStem = os.path.basename(pakchunkRelStemPath)
+                        pakchunkFilename = f'{pakchunkStem}{PakchunkFilenameSuffix}'
+                        pakchunkRelPath = f'{pakchunkRelStemPath}{PakchunkFilenameSuffix}'
                         source = normPath(os.path.join(gamePaksDir, pakchunkRelPath))
-                        dest = normPath(os.path.join(pakingDir, filename))
-                        if filename in pakingDirPakchunks:
-                            sprint(f'Removing "[Paks]/{pakchunkRelPath}" which is also stored at "{dest}"')
-                            if not dryRun:
-                                if readyToWrite(source):
+                        dest = normPath(os.path.join(pakingDir, pakchunkFilename))
+                        if pakchunkStem in pakingDirPakchunkStems:
+                            sprint(f'{dryRunPrefix}Removing "[Paks]/{pakchunkRelPath}" which is also stored at "{dest}"')
+                            if readyToWrite(source):
+                                if not dryRun:
                                     pathlib.Path.unlink(source)
-                                    noChanges = False
+                                madeChanges = True
                         else:
-                            sprint(f'Moving "{pakchunkRelPath}" to "{dest}"')
+                            sprint(f'{dryRunPrefix}Moving "{pakchunkRelPath}" to "{dest}"')
                             if not dryRun:
                                 shutil.move(source, dest)
-                                noChanges = False
+                            madeChanges = True
 
-                    if dryRun:
-                        sprint('Done.')
-                    else:
-                        sprint(f'Installation succeeded{" - no changes" if noChanges else ""}.')
+                    sprint(f'{dryRunPrefix}Installation succeeded{"" if madeChanges else " - no changes made"}.')
                     sprintPad()
     except Exception as e:
         printError(e)
-        if debug:
-            raise e
 
     if (
         inspecting
@@ -1695,10 +1895,10 @@ def runCommand(**kwargs):
                 'namesRemoved': nameMapNamesRemoved,
                 'namesAdded': nameMapNamesAdded,
             },
-            'pakingDirPakchunks': pakingDirPakchunks,
+            'pakingDirPakchunks': pakingDirPakchunkStems,
             'gamePaksDir': gamePaksDir,
             'gamePakchunks': gamePakchunks,
-            'modsToBeActive': modsToBeActive,
+            'targetActiveMods': targetActiveMods,
             'cookedContentDir': cookedContentDir,
             'cookedAssets': list(cookedContentAssetPathsMap.keys()),
             'cookedFiles': cookedContentPaths,
@@ -1706,51 +1906,58 @@ def runCommand(**kwargs):
 
         outputInfoFilename = getResultsFilePath(settingsFilePath)
         sprintPad()
-        sprint(f'Writing command results to "{outputInfoFilename}"')
-        # TODO: should we overwrite result file without confirming?
-        if readyToWrite(outputInfoFilename, overwrite=True):
-            with open(outputInfoFilename, 'w') as file:
-                yamlDump(jsonifyDataRecursive(outputInfo), file)
+        sprint(f'{dryRunPrefix}Writing command results to "{outputInfoFilename}"')
+        shouldWrite = not dryRun or (not nonInteractive and confirm(f'write command results ("{outputInfoFilename}") despite dry run', pad=True, emptyMeansNo=True))
+        written = False
+        if shouldWrite:
+            # TODO: should we not overwrite result file without confirmation?
+            if readyToWrite(outputInfoFilename, overwrite=True):
+                with open(outputInfoFilename, 'w') as file:
+                    yamlDump(jsonifyDataRecursive(outputInfo), file)
+                    written = True
+        if written or dryRun:
+            sprint(f'{dryRunPrefix if not written else ""}Done writing.')
         sprintPad()
 
     if openingGameLauncher:
-        if not gameDir:
-            printError('Missing or empty `gameDir`')
-        else:
-            sprintPad()
-            sprint('Opening game launcher and starting game if not already running (exit the launcher to return)...')
-            if nonInteractive:
-                printError('Cannot open game launcher in non-interactive mode')
+        sprintPad()
+        sprint(f'{dryRunPrefix}Opening game launcher and starting game if not already running (exit the launcher to return)...')
+        if nonInteractive:
+            printError('Cannot open game launcher in non-interactive mode')
+        elif not gameDir:
+            printError('Missing or invalid `gameDir`')
+        elif not dryRun:
+            warningOfLauncherClearScreen = launcherClearsScreenBuffer and not getSprintIsRecording()
+            if (
+                warningOfLauncherClearScreen
+                and overwriteOverride is not True
+                and (
+                    inspecting
+                    or extractingAttachments
+                    or renamingAttachmentFiles
+                    or creatingAttachments
+                    or mixingAttachments
+                    or paking
+                    or installingMods
+                )
+            ):
+                shouldProceed = confirm('open the launcher and clear the screen buffer history', pad=True)
             else:
-                warningOfLauncherClearScreen = not getSprintIsRecording()
-                if (
-                    warningOfLauncherClearScreen
-                    and overwriteOverride is not True
-                    and (
-                        inspecting
-                        or extractingAttachments
-                        or renamingAttachmentFiles
-                        or creatingAttachments
-                        or mixingAttachments
-                        or paking
-                        or installingMods
-                    )
-                ):
-                    shouldProceed = confirm('open the launcher and clear the screen buffer history', pad=True)
-                else:
-                    shouldProceed = True
+                shouldProceed = True
 
-                if shouldProceed:
-                    gameIsRunning = getGameIsRunning()
-                    try:
-                        exitCode = openGameLauncher(getPathInfo(gameDir)['best'], startGame=not getGameIsRunning())
+            if shouldProceed:
+                try:
+                    exitCode = openGameLauncher(getPathInfo(gameDir)['best'], startGame=True)
+                    # TODO: remove
+                    if False:
                         # clear any last bits of the launcher output left over
-                        os.system('cls')
+                        sprintClear()
+                    if launcherClearsScreenBuffer and getSprintIsRecording():
                         replaySprintRecording()
-                    except Exception as e:
-                        printError(e)
-                    finally:
-                        clearSprintRecording()
-            sprintPad()
+                except Exception as e:
+                    printError(e)
+                finally:
+                    clearSprintRecording()
+        sprintPad()
 
     return exitCode

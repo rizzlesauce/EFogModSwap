@@ -1,38 +1,93 @@
 import os
 import re
 
-from pathHelpers import getPathInfo, normPath
 from consoleHelpers import sprint, sprintP, sprintPad
+from pathHelpers import getPathInfo, normPath
 from processHelpers import runCall
+from programMetaData import ProgramName
 from tempFileHelpers import openTemporaryFile
 
 DefaultPlatform = 'WindowsNoEditor'
 
 UnrealPakProgramStem = 'UnrealPak'
 UnrealPakProgramFilename = f'{UnrealPakProgramStem}.exe'
-PakchunkFileExtension = '.pak'
+
+PakchunkFilenamePrefix = 'pakchunk'
+PakchunkFilenameSuffix = '.pak'
+
+pakchunkRefnameRegexCompiled = None
 
 def getPakContentDir(pakDir, gameName):
     return normPath(os.path.join(pakDir, gameName, 'Content'))
 
 
-def getPakchunkFilenameRegex():
-    return re.compile(r'^^pakchunk(?P<number>\d+)(?P<name>\w+)?(?P<platformPart>-(?P<platform>\w+)?)?(?P<suffix>\.pak)?$$', re.IGNORECASE)
+def getPakchunkRefnameRegex():
+    global pakchunkRefnameRegexCompiled
+
+    if pakchunkRefnameRegexCompiled is None:
+        pakchunkRefnameRegexCompiled = re.compile(
+            r'^'
+            r'pakchunk(?P<number>0|[1-9]\d*)'
+            r'(?P<name>[a-z_-]([\w-]|\.[\w-])*?)??'
+            r'(?P<platformPart>-'
+                r'(?P<platform>[a-z_](\w|\.\w)*?)'
+                r'(?P<platformSuffixPart>-'
+                    r'(?P<platformSuffix>\w(\w|\.\w)*?)'
+                r')?'
+            r')?'
+            r'(?P<suffix>.pak)?'
+            r'$',
+            re.IGNORECASE,
+        )
+    return pakchunkRefnameRegexCompiled
 
 
-def getPackchunkFilenameParts(filenameOrStem):
-    match = getPakchunkFilenameRegex().match(filenameOrStem)
+def pakchunkRefnameToParts(filenameOrStem):
+    match = getPakchunkRefnameRegex().match(filenameOrStem)
     if match:
         result = match.groupdict()
         result['number'] = int(result['number'])
         return result
 
 
-def toPakchunkStem(pakNumber, pakName=None, platform=None):
-    stem = f'pakchunk{pakNumber}{pakName or ""}'
+def pakchunkRefnamePartsToRefname(pakNumber, pakName=None, platform=None, platformSuffix=None, addPrefix=True, addSuffix=True):
+    stem = f'{pakNumber}{pakName or ""}'
+    if addPrefix:
+        stem = f'{PakchunkFilenamePrefix}{stem}'
     if platform:
         stem = f'{stem}-{platform}'
-    return stem
+    if platformSuffix:
+        assert platform
+        stem = f'{stem}-{platformSuffix}'
+    if addSuffix:
+        filename = f'{stem}{PakchunkFilenameSuffix}'
+    else:
+        filename = stem
+
+    return filename
+
+
+def pakchunkRefnamePartsDictToRefname(filenameParts, addPrefix=True, addPlatform=True, defaultPlatform=None, addSuffix=True):
+    return pakchunkRefnamePartsToRefname(
+        filenameParts['number'],
+        pakName=filenameParts.get('name', None),
+        platform=filenameParts.get('platform', defaultPlatform) if addPlatform else None,
+        platformSuffix=filenameParts.get('platformSuffix', None) if addPlatform else None,
+        addPrefix=addPrefix,
+        addSuffix=addSuffix,
+    )
+
+
+def pakchunkRefnameToFilename(refname, addPrefix=True, addPlatform=True, defaultPlatform=None, addSuffix=True):
+    filenameParts = pakchunkRefnameToParts(refname)
+    if filenameParts:
+        return pakchunkRefnamePartsDictToRefname(
+            filenameParts,
+            addPrefix=addPrefix,
+            addPlatform=addPlatform,
+            defaultPlatform=defaultPlatform,
+            addSuffix=addSuffix,
+        )
 
 
 def unrealPak(pakDir, destPakPath, unrealPakPath, compress=True, debug=False):
@@ -76,16 +131,18 @@ def unrealPak(pakDir, destPakPath, unrealPakPath, compress=True, debug=False):
 
     usingTempFile = True
 
+    fileStem = f'{ProgramName}_UnrealPak_filelist'
+
     if usingTempFile:
         with openTemporaryFile(
-            prefix='DbdSocketsMixer_UnrealPak_filelist_',
+            prefix=f'{fileStem}_',
             suffix='.txt',
             mode='w',
             dir=programPathInfo['dir'],
         ) as file:
             runCommand(file)
     else:
-        responseFilePath = normPath(os.path.join(programPathInfo['dir'], 'DbdSocketsMixer_UnrealPak_filelist.txt'))
+        responseFilePath = normPath(os.path.join(programPathInfo['dir'], f'{fileStem}.txt'))
         with open(responseFilePath, 'w') as file:
             runCommand(file)
 

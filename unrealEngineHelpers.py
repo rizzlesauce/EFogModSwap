@@ -2,7 +2,8 @@ import os
 
 from pathHelpers import normPath
 
-UnrealEngineCookedSplitFileExtensions = {'.uasset', '.ubulk', '.uexp'}
+UassetFilenameSuffix = '.uasset'
+UnrealEngineCookedSplitFileExtensions = {UassetFilenameSuffix, '.ubulk', '.uexp'}
 
 
 def getUnrealProjectCookedContentDir(unrealProjectDir, platform, gameName):

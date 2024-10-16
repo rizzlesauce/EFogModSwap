@@ -5,20 +5,21 @@ from pakHelpers import UnrealPakProgramFilename, UnrealPakProgramStem
 from pathHelpers import normPath
 from programMetaData import ProgramName, Version
 from uassetHelpers import UassetGuiProgramFilename, UassetGuiProgramStem
+from unrealEngineHelpers import UassetFilenameSuffix
 
 DefaultSettingsFileStem = 'settings'
 DefaultSettingsPath = f'{DefaultSettingsFileStem}.yaml'
-DefaultCustomizationItemDbPath = f'{CustomizationItemDbAssetName}.uasset'
+DefaultCustomizationItemDbPath = f'{CustomizationItemDbAssetName}{UassetFilenameSuffix}'
 DefaultAttachmentsDir = 'attachments'
 DefaultPakingDir = 'paking'
-DefaultUassetGuiPath = UassetGuiProgramFilename
-DefaultUnrealPakPath = UnrealPakProgramFilename
 
 def getSettingsTemplate():
-    return f'''
-# {ProgramName} {Version} settings.
+    return (
+f'''# {ProgramName} {Version} settings.
 
 # File paths can be relative or absolute.
+# Pakchunk references can be abbreviated to `pakchunk<number>[name]`
+# (pakchunk platform and file extension parts are optional)
 
 ## Inherited settings files
 
@@ -47,38 +48,10 @@ attachmentsDir: attachments
 ## Game paths
 
 # Path to the game. Used for installing mods and launching the game.
-gameDir: C:/Dead By Daylight 4.4.2
+#gameDir: C:/Dead By Daylight 4.4.2
 
 # Top level folder within pakchunks and projects containing game files and cooked content.
 gameName: DeadByDaylight
-
-## Cooked asset paths
-
-# Path to an Unreal Engine project if you want to use cooked assets from there.
-#unrealProjectDir: C:/DeadByDaylightProject-master
-
-# Path to a pakchunk pak or folder if you want to use cooked assets from there.
-# This takes precedence over `unrealProjectDir`.
-#srcPakPath: C:/ModTools/UnrealPak/pakchunk4321-WindowsNoEditor
-
-# Path to {CustomizationItemDbAssetName} if mixing or manipulating custom slots.
-# This can be either a UASSET file, or a JSON file saved from {UassetGuiProgramStem}.
-# If the path begins with "/Content/", it will be treated like a relative game path
-# within the pakchunk or unreal project specified above.
-#customizationItemDbPath: /Content/Data/Dlc/<Mod name>/{CustomizationItemDbAssetName}
-customizationItemDbPath: {DefaultCustomizationItemDbPath}
-
-## Target pakchunk specification
-
-# Pakchunk name and number. If these are omitted and `srcPakPath` is specified,
-# name and number will be extracted from the source pakchunk.
-#destPakNumber: 4321
-#destPakName: <Mod name>
-
-# Assets to include in the target pakchunk. If omitted or empty and `srcPakPath` is
-# specified, it will be the list of assets in the source pakchunk.
-#destPakAssets:
-#- Data/Dlc/<Mod name>/{CustomizationItemDbAssetName}
 
 ## Mod configurations
 
@@ -88,7 +61,8 @@ customizationItemDbPath: {DefaultCustomizationItemDbPath}
 # simply named lists of pakchunks.
 
 # Specify the active mod configuration
-activeModConfig: unmodded
+activeModConfig: legendary1v1
+#activeModConfig: unmodded
 
 # Mod configurations are combinations of mod groups. You can name a config whatever you want.
 modConfigs:
@@ -108,11 +82,11 @@ modConfigs:
 # Mod groups are named sets of related pakchunks. You can name the groups whatever you want.
 modGroups:
   noMods: []
-  1v1:
-  - pakchunk790nice1v1-WindowsNoEditor
-  1v4:
-  - pakchunk781nice1v4-WindowsNoEditor
-  - pakchunk782more1v4-WindowsNoEditor
+  1v1mods:
+  - pakchunk790enhanced1v1-WindowsNoEditor
+  1v4mods:
+  - pakchunk781essential1v4-WindowsNoEditor
+  - pakchunk782-WindowsNoEditor
   legendaryMods:
   - pakchunk827legendary-WindowsNoEditor
   - pakchunk828legend-WindowsNoEditor
@@ -124,47 +98,77 @@ modGroups:
 # Reserved pakchunks are ones to ignore and never touch. For starters, these could be pakchunks
 # that are part of the base game.
 reservedPakchunks:
-- pakchunk0-WindowsNoEditor.pak
-- pakchunk1-WindowsNoEditor.pak
-- pakchunk10-WindowsNoEditor.pak
-- pakchunk11-WindowsNoEditor.pak
-- pakchunk12-WindowsNoEditor.pak
-- pakchunk13-WindowsNoEditor.pak
-- pakchunk14-WindowsNoEditor.pak
-- pakchunk15-WindowsNoEditor.pak
-- pakchunk16-WindowsNoEditor.pak
-- pakchunk17-WindowsNoEditor.pak
-- pakchunk18-WindowsNoEditor.pak
-- pakchunk19-WindowsNoEditor.pak
-- pakchunk2-WindowsNoEditor.pak
-- pakchunk20-WindowsNoEditor.pak
-- pakchunk21-WindowsNoEditor.pak
-- pakchunk22-WindowsNoEditor.pak
-- pakchunk23-WindowsNoEditor.pak
-- pakchunk24-WindowsNoEditor.pak
-- pakchunk25-WindowsNoEditor.pak
-- pakchunk26-WindowsNoEditor.pak
-- pakchunk27-WindowsNoEditor.pak
-- pakchunk28-WindowsNoEditor.pak
-- pakchunk29-WindowsNoEditor.pak
-- pakchunk3-WindowsNoEditor.pak
-- pakchunk30-WindowsNoEditor.pak
-- pakchunk31-WindowsNoEditor.pak
-- pakchunk32-WindowsNoEditor.pak
-- pakchunk33-WindowsNoEditor.pak
-- pakchunk34-WindowsNoEditor.pak
-- pakchunk35-WindowsNoEditor.pak
-- pakchunk36-WindowsNoEditor.pak
-- pakchunk37-WindowsNoEditor.pak
-- pakchunk38-WindowsNoEditor.pak
-- pakchunk39-WindowsNoEditor.pak
-- pakchunk4-WindowsNoEditor.pak
-- pakchunk40-WindowsNoEditor.pak
-- pakchunk5-WindowsNoEditor.pak
-- pakchunk6-WindowsNoEditor.pak
-- pakchunk7-WindowsNoEditor.pak
-- pakchunk8-WindowsNoEditor.pak
-- pakchunk9-WindowsNoEditor.pak
+- pakchunk0-WindowsNoEditor
+- pakchunk1-WindowsNoEditor
+- pakchunk10-WindowsNoEditor
+- pakchunk11-WindowsNoEditor
+- pakchunk12-WindowsNoEditor
+- pakchunk13-WindowsNoEditor
+- pakchunk14-WindowsNoEditor
+- pakchunk15-WindowsNoEditor
+- pakchunk16-WindowsNoEditor
+- pakchunk17-WindowsNoEditor
+- pakchunk18-WindowsNoEditor
+- pakchunk19-WindowsNoEditor
+- pakchunk2-WindowsNoEditor
+- pakchunk20-WindowsNoEditor
+- pakchunk21-WindowsNoEditor
+- pakchunk22-WindowsNoEditor
+- pakchunk23-WindowsNoEditor
+- pakchunk24-WindowsNoEditor
+- pakchunk25-WindowsNoEditor
+- pakchunk26-WindowsNoEditor
+- pakchunk27-WindowsNoEditor
+- pakchunk28-WindowsNoEditor
+- pakchunk29-WindowsNoEditor
+- pakchunk3-WindowsNoEditor
+- pakchunk30-WindowsNoEditor
+- pakchunk31-WindowsNoEditor
+- pakchunk32-WindowsNoEditor
+- pakchunk33-WindowsNoEditor
+- pakchunk34-WindowsNoEditor
+- pakchunk35-WindowsNoEditor
+- pakchunk36-WindowsNoEditor
+- pakchunk37-WindowsNoEditor
+- pakchunk38-WindowsNoEditor
+- pakchunk39-WindowsNoEditor
+- pakchunk4-WindowsNoEditor
+- pakchunk40-WindowsNoEditor
+- pakchunk5-WindowsNoEditor
+- pakchunk6-WindowsNoEditor
+- pakchunk7-WindowsNoEditor
+- pakchunk8-WindowsNoEditor
+- pakchunk9-WindowsNoEditor
+
+## Cooked asset paths
+
+# Path to an Unreal Engine project if you want to use cooked assets from there.
+#unrealProjectDir: C:/DeadByDaylightProject-master
+
+# Path to a pakchunk pak or folder if you want to use cooked assets from there.
+# This takes precedence over `unrealProjectDir`.
+#srcPakPath: C:/ModTools/UnrealPak/pakchunk4321-WindowsNoEditor
+
+# Path to {CustomizationItemDbAssetName} if mixing or manipulating custom slots.
+# This can be either a UASSET file, or a JSON file saved from {UassetGuiProgramStem}.
+# If the path begins with "/Content/", it will be treated like a relative game path
+# within the pakchunk or unreal project specified above.
+#customizationItemDbPath: /Content/Data/Dlc/<Mod name>/{CustomizationItemDbAssetName}
+#customizationItemDbPath: {DefaultCustomizationItemDbPath}
+
+## Target pakchunk specification
+
+# Pakchunk name and number. If these are omitted and `srcPakPath` is specified,
+# name and number will be extracted from the source pakchunk.
+#destPakNumber: 4321
+#destPakName: <ModName>
+# This is uncommon
+#destPakPlatformSuffix: 2
+
+# Assets to include in the target pakchunk. If omitted or empty and `srcPakPath` is
+# specified, it will be the list of assets in the source pakchunk.
+#destPakAssets:
+#- Data/Dlc/<Mod name>/{CustomizationItemDbAssetName}
 
 ## Attachment mixing preferences
 
@@ -272,6 +276,7 @@ combosToSkip:
   - - KateBlueGemNecklace
     - KateGoldNecklaceNoRing
 '''
+  )
 
 def getContentDirRelativePath(path):
     path = normPath(path)

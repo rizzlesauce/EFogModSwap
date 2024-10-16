@@ -6,16 +6,14 @@ Module Docstring
 import argparse
 import sys
 
-from customizationItemDbHelpers import CustomizationItemDbAssetName
-from pakHelpers import UnrealPakProgramFilename
-from pathHelpers import getPathInfo
 from consoleHelpers import sprint, sprintPad
+from customizationItemDbHelpers import CustomizationItemDbAssetName
+from pathHelpers import getPathInfo
 from programMetaData import ProgramName, Version
 from runCommand import runCommand
 from runMenu import runMenu
-from settingsHelpers import (DefaultSettingsPath, DefaultUassetGuiPath,
-                             DefaultUnrealPakPath)
-from uassetHelpers import UassetGuiProgramFilename, UassetGuiProgramStem
+from settingsHelpers import DefaultSettingsPath
+from uassetHelpers import UassetGuiProgramStem
 
 __author__ = 'Ross Adamson'
 __version__ = Version
@@ -25,15 +23,13 @@ if __name__ == '__main__':
     """ This is executed when run from the command line """
     parser = argparse.ArgumentParser(
         prog=ProgramName,
-        description='''Mixes socket attachments with character models.
+        description='''Swaps mods and character model accessories
 
-Can also extract socket attachment definitions from a {CustomizationItemDbResourceName}.
-A YAML settings file specifies the input {CustomizationItemDbResourceName} file and the
-mix options.
-
-{UassetGuiProgramStem} can be used to export a {CustomizationItemDbResourceName}.uasset file to JSON.
-{ProgramName} reads that JSON file and writes an altered version that
-can be converted back to the original uasset file using {UassetGuiProgramStem}.
+Running with no arguments opens the interactive menu. To get started, select `List`
+from the menu to create a settings file with helpful inline documentation. Then, choose
+`Edit` from the menu to edit the settings file. In the settings file, set `gameDir` to
+your game folder, and configure `modGroups` and `modConfigs` as desired. Finally,
+run `ActiveModConfig`, `Install`, and `Launch` to start the game with your mod config.
 '''.format(
             ProgramName=ProgramName,
             CustomizationItemDbResourceName=CustomizationItemDbAssetName,
@@ -47,18 +43,13 @@ can be converted back to the original uasset file using {UassetGuiProgramStem}.
         nargs='?',
     )
     parser.add_argument(
-        '--uassetGuiPath',
-        help=f'path to {UassetGuiProgramFilename} (defaults to `{getPathInfo(DefaultUassetGuiPath)["best"]}`)',
-        type=str,
-    )
-    parser.add_argument(
-        '--unrealPakPath',
-        help=f'path to {UnrealPakProgramFilename} (defaults to `{getPathInfo(DefaultUnrealPakPath)["best"]}`)',
+        '--activeModConfig',
+        help=f'set the active mod configuration (overrides `activeModConfig` setting)',
         type=str,
     )
     parser.add_argument(
         '--list',
-        help='list, inspect, and collect data',
+        help='list, inspect, and collect data (and create a settings file if needed)',
         action='store_true',
     )
     parser.add_argument(
@@ -93,7 +84,7 @@ can be converted back to the original uasset file using {UassetGuiProgramStem}.
     )
     parser.add_argument(
         '--launch',
-        help='open game launcher',
+        help='open game launcher menu and start the game',
         action='store_true',
     )
     parser.add_argument(
@@ -102,9 +93,14 @@ can be converted back to the original uasset file using {UassetGuiProgramStem}.
         action='store_true',
     )
     parser.add_argument(
-        '-ni',
-        help='run in non-interactive mode',
-        action='store_true',
+        '--overwrite',
+        help='force or prevent file overwrites without prompting',
+        action=argparse.BooleanOptionalAction,
+    )
+    parser.add_argument(
+        '--dry',
+        help='run without making changes to mods to see what would happen',
+        action=argparse.BooleanOptionalAction,
     )
     parser.add_argument(
         '--debug',
@@ -112,9 +108,9 @@ can be converted back to the original uasset file using {UassetGuiProgramStem}.
         action='store_true',
     )
     parser.add_argument(
-        '--overwrite',
-        help='force or prevent file overwrites without prompting',
-        action=argparse.BooleanOptionalAction,
+        '-ni',
+        help='run in non-interactive mode',
+        action='store_true',
     )
     parser.add_argument(
         '--version',
@@ -142,6 +138,7 @@ can be converted back to the original uasset file using {UassetGuiProgramStem}.
     else:
         exitCode = runCommand(
             settingsFilePath=args.settingsFilePath,
+            activeModConfigName=args.activeModConfig,
             inspecting=args.list,
             creatingAttachments=args.create,
             extractingAttachments=args.extract,
@@ -151,10 +148,11 @@ can be converted back to the original uasset file using {UassetGuiProgramStem}.
             installingMods=args.install,
             openingGameLauncher=args.launch,
             killingGame=args.kill,
-            nonInteractive=args.ni,
-            debug=args.debug,
             uassetGuiPath=args.uassetGuiPath,
+            dryRun=args.dry,
             overwriteOverride=args.overwrite,
+            debug=args.debug,
+            nonInteractive=args.ni,
         )
 
     # TODO: remove

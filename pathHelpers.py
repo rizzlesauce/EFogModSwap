@@ -18,7 +18,7 @@ def getPathInfo(path, relativeDir='./', debug=False):
     result = {
         'path': path,
         'normalized': '',
-        'relativeDir': relativeDir,
+        'relativeDir': '',
         'relativeDirResolved': '',
         'isAbsolute': False,
         'absolute': '',
@@ -49,6 +49,8 @@ def getPathInfo(path, relativeDir='./', debug=False):
         pathlibPath = pathlib.Path(result['absolute'])
 
         result['dir'] = os.path.dirname(result['absolute'])
+        if result['relative'] is not None:
+            result['relativeDir'] = os.path.dirname(result['relative'])
         result['basename'] = os.path.basename(result['absolute'])
         result['stem'] = pathlibPath.stem
         result['suffix'] = pathlibPath.suffix
