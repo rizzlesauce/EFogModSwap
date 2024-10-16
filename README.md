@@ -1,4 +1,4 @@
-# DbdSocketsMixer
+# DbdModSwap
 
 <img width="863" alt="image" src="https://github.com/user-attachments/assets/2c9ee26d-4481-4cd1-9937-a02d012b9b89">
 
@@ -9,14 +9,14 @@ It also includes a customized game launcher menu, as well as a tool for extracti
 from existing customization item databases, and a tool for generating socket attachment definitions
 from attachment blueprint game paths.
 
-## [Releases](https://github.com/rizzlesauce/DbdSocketsMixer/releases)
+## [Releases](https://github.com/rizzlesauce/DbdModSwap/releases)
 
 ## Getting started
 
-Download the latest EXE from the releases page. Put it in a folder named DbdSocketsMixer (or whatever
+Download the latest EXE from the releases page. Put it in a folder named DbdModSwap (or whatever
 you want to call it).
 
-Run `DbdSocketsMixer.exe` with no arguments to enter the interactive menu.
+Run `DbdModSwap.exe` with no arguments to enter the interactive menu.
 
 Follow the instructions in the CLI start page to generate a settings file and begin configuring. The
 settings file comes with a lot of inline documentation to help explain each setting.
@@ -90,7 +90,7 @@ If you're wanting to mix a model from the pakchunk, the CustomizationItemDB will
 model with zero socket attachments. If it doesn't, one will need to be created in UE4 or edited to remove all
 the socket attachments using `UAssetGUI`.
 
-You can either copy the `CustomizationItemDB.uasset` file to your DbdSocketsMixer folder, or
+You can either copy the `CustomizationItemDB.uasset` file to your DbdModSwap folder, or
 leave it where it is and configure a path to it in the settings.
 
 Edit the settings and ensure that `customizationItemDbPath` is pointing to the `CustomizationItemDB.uasset` file.
@@ -109,7 +109,7 @@ By default, this will write any discovered attachment definitions to the `attach
 Edit each new attachment definition YAML file to ensure that `attachmentId`
 is globally unique (it should not duplicate any other attachment IDs in the game).
 You may also add a short, descriptive display name for the attachment (e.g., `Hiking Backpack`).
-You can view attachment definition files by opening your DbdSocketsMixer folder
+You can view attachment definition files by opening your DbdModSwap folder
 (menu option: `Folder`) and, from there, opening the `attachments` folder.
 Some attachments might be duplicates of others, so just delete those.
 
@@ -147,12 +147,12 @@ Compatible with Windows, UAssetGUI 1.0.2, Unreal Engine 4.25, and DBD-4.4.2.
 
 ## CLI usage
 
-Run `DbdSocketsMixer.exe -h` for detailed usage and options, or without any arguments to view the menu.
+Run `DbdModSwap.exe -h` for detailed usage and options, or without any arguments to view the menu.
 
 ## Building
 
 For starters, you'll need Python 3. Setup a venv for the project and activate it.
 Then, download all the dependencies with `pip install -r requirements.txt`.
 
-To bundle everything into a Windows executable, run `pyinstaller --onefile DbdSocketsMixer.py`,
-which will generate a portable EXE at `.\dist\DbdSocketsMixer.exe`.
+To bundle everything into a Windows executable, run `pyinstaller --onefile DbdModSwap.py`,
+which will generate a portable EXE at `.\dist\DbdModSwap.exe`.

@@ -1,4 +1,4 @@
 Version = '0.1.4'
 
-ProgramName = 'DbdSocketsMixer'
+ProgramName = 'DbdModSwap'
 ProgramFilename = f'{ProgramName}.exe'
