@@ -11,9 +11,11 @@ from attachment blueprint game paths.
 
 ## [Releases](https://github.com/rizzlesauce/DbdModSwap/releases)
 
+![DbdModSwap walkthrough](https://github.com/user-attachments/assets/6b49c0da-4e28-479d-aa21-5bc53ea09492)
+
 ## Getting started
 
-Download the latest EXE from the releases page. Put it in a folder named DbdModSwap (or whatever
+Download the latest EXE from the Releases page. Put it in a folder named DbdModSwap (or whatever
 you want to call it).
 
 Run `DbdModSwap.exe` with no arguments (or double click on it from file explorer) to enter the
