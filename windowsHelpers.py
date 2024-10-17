@@ -3,6 +3,10 @@ import webbrowser
 import winreg
 
 
+def setConsoleTitle(title):
+    os.system(f'title {title}')
+
+
 def getWindowsDefaultEditor():
     """Gets the default editor for Windows."""
 

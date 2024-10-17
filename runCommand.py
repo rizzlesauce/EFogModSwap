@@ -37,6 +37,7 @@ from pakHelpers import (DefaultPlatform, PakchunkFilenameSuffix,
                         pakchunkRefnameToFilename, pakchunkRefnameToParts,
                         unrealPak, unrealUnpak)
 from pathHelpers import getPathInfo, normPath
+from programMetaData import ConsoleTitle
 from settingsHelpers import (DefaultAttachmentsDir, DefaultPakingDir,
                              findSettingsFiles, getContentDirRelativePath,
                              getResultsFilePath, getSettingsTemplate)
@@ -46,9 +47,10 @@ from uassetHelpers import (ItemTypeName, NameFieldName, ValueFieldName,
                            jsonToUasset, setPropertyValue, uassetToJson)
 from unrealEngineHelpers import (UnrealEngineCookedSplitFileExtensions,
                                  getUnrealProjectCookedContentDir)
-from windowsHelpers import openFolder
+from windowsHelpers import openFolder, setConsoleTitle
 from yamlHelpers import yamlDump
 
+DefaultLauncherStartsGame = True
 
 def mergeSettings(parentData, childData):
     for key, value in childData.items():
@@ -101,12 +103,15 @@ def runCommand(**kwargs):
     debug = kwargs.get('debug', False)
     uassetGuiPath = kwargs.get('uassetGuiPath', '')
     overwriteOverride = kwargs.get('overwriteOverride', None)
+    launcherStartsGame = kwargs.get('launcherStartsGame', None)
     dryRun = kwargs.get('dryRun', False)
 
     DryRunPrefix = '[DryRun] '
     dryRunPrefix = DryRunPrefix if dryRun else ''
 
     launcherClearsScreenBuffer = False
+    if launcherStartsGame is None:
+        launcherStartsGame = DefaultLauncherStartsGame
 
     if openingGameLauncher and not dryRun and launcherClearsScreenBuffer:
         startSprintRecording()
@@ -1921,7 +1926,7 @@ def runCommand(**kwargs):
 
     if openingGameLauncher:
         sprintPad()
-        sprint(f'{dryRunPrefix}Opening game launcher and starting game if not already running (exit the launcher to return)...')
+        sprint(f'{dryRunPrefix}Opening game launcher{" and starting game if not already running" if launcherStartsGame else ""} (exit the launcher to return)...')
         if nonInteractive:
             printError('Cannot open game launcher in non-interactive mode')
         elif not gameDir:
@@ -1947,7 +1952,8 @@ def runCommand(**kwargs):
 
             if shouldProceed:
                 try:
-                    exitCode = openGameLauncher(getPathInfo(gameDir)['best'], startGame=True)
+                    exitCode = openGameLauncher(getPathInfo(gameDir)['best'], startGame=launcherStartsGame)
+                    setConsoleTitle(ConsoleTitle)
                     # TODO: remove
                     if False:
                         # clear any last bits of the launcher output left over

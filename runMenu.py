@@ -8,7 +8,8 @@ from consoleHelpers import (esprint, promptToContinue, sprint, sprintClear,
 from gameHelpers import getGameIsRunning, getGameServerIsRunning
 from pathHelpers import getPathInfo
 from programMetaData import ProgramName, Version
-from runCommand import readSettingsRecursive, runCommand
+from runCommand import (DefaultLauncherStartsGame, readSettingsRecursive,
+                        runCommand)
 from settingsHelpers import (DefaultSettingsPath, findSettingsFiles,
                              getResultsFilePath)
 from windowsHelpers import openFile, openFolder
@@ -27,7 +28,7 @@ def reportAmbigous(token, matchingItems):
         return f"{firstPart}{token.upper()}{lastPart}"
 
     esprint(f'"{token}" could be {" | ".join([highlightedMenuItem(item) for item in matchingItems])}.')
-    esprint('Type more of the word.')
+    esprint('Type more of the name.')
 
 
 def parseMenuItemFromToken(token, menuItems, allowExact=True, allowSubset=True, allowCustom=False):
@@ -112,7 +113,7 @@ def runMenu(args, parser):
             break
 
     sprintPad()
-    sprint('You can run one or multiple actions by entering menu numbers or parts of menu item names.')
+    sprint('You can run one or more actions at a time by entering menu numbers or menu item names.')
 
     exitCode = 0
 
@@ -123,16 +124,31 @@ def runMenu(args, parser):
     userSpecifiedModConfigName = (args.activeModConfig or '').strip() or menuSettings.get('activeModConfig', None)
     activeModConfigName = None
     activeModConfigExists = False
+    launcherStartsGame = args.autoLaunch if isinstance(args.autoLaunch, bool) else menuSettings.get('launcherStartsGame', None)
+    if launcherStartsGame is None:
+        launcherStartsGmae = DefaultLauncherStartsGame
+    if launcherStartsGame is not None and launcherStartsGame != menuSettings.get('launcherStartsGame', None):
+        menuSettings['launcherStartsGame'] = launcherStartsGame
+        menuSettingsDirty = True
     debug = args.debug or menuSettings.get('debug', False)
     dryRun = args.dry or menuSettings.get('dryRun', False)
     overwriteOverride = args.overwrite if args.overwrite is not None else menuSettings.get('overwriteOverride', None)
 
+    def getYesOrNoStr(flag):
+        return 'yes' if flag else 'no'
+
+    def getOnOrOffStr(flag):
+        return 'on' if flag else 'off'
+
     def getSettingsFileStr():
-        return f'"{settingsFilePath}"{(" (loaded)" if settingsFileValid else " (invalid)") if settingsFileExists else " (new file)"}' if settingsFilePath else '<Not specified>'
+        return f'"{settingsFilePath}"{((" (loaded)" if False else "") if settingsFileValid else " (invalid)") if settingsFileExists else " (new file)"}' if settingsFilePath else '<Not specified>'
 
     def getActiveModConfigStr():
         # TODO: report whether mod config is verified to be installed or not, and whether it matches `activeModConfig` settings
         return f'"{activeModConfigName}"{("" if activeModConfigExists else " (missing)")}' if activeModConfigName else '<Not specified>'
+
+    def getOverwriteModeStr():
+        return 'always' if overwriteOverride else 'never' if overwriteOverride is False else 'ask'
 
     def modConfigExists(modConfigName):
         return modConfigName in settings.get('modConfigs', {})
@@ -175,7 +191,7 @@ def runMenu(args, parser):
         {'title': 'Game'},
         'activeModConfig',
         'install',
-        'launch',
+        'launcher',
         'kill',
         {'title': 'Settings'},
         'settingsFilePath',
@@ -229,15 +245,17 @@ def runMenu(args, parser):
                 gameRunning = getGameIsRunning()
 
             sprintPad()
-            sprint(f'Settings file: {getSettingsFileStr()}')
-            sprint(f'Active mod config: {getActiveModConfigStr()}')
-            sprint(f"Overwrite mode: {'overwrite' if overwriteOverride else 'no overwrite' if overwriteOverride is False else 'prompt'}")
-            sprint(f"Dry run: {'yes' if dryRun else 'no'}")
-            sprint(f"Debug: {'yes' if debug else 'no'}")
+            # TODO: remove
+            if False:
+                sprint(f'Settings file: {getSettingsFileStr()}')
+                sprint(f'Active mod config: {getActiveModConfigStr()}')
+                sprint(f"Overwrite files: {getOverwriteModeStr()}")
+                sprint(f"Dry run: {getYesOrNoStr(dryRun)}")
+                sprint(f"Debug: {getYesOrNoStr(debug)}")
             if showServerRunning:
-                sprint(f'Game server running: {"yes" if gameServerRunning else "no"}')
+                sprint(f'Game server running: {getYesOrNoStr(gameServerRunning)}')
             if showGameRunning:
-                sprint(f'Game running: {"yes" if gameRunning else "no"}')
+                sprint(f'Game running: {getYesOrNoStr(gameRunning)}')
 
             sprintPad()
 
@@ -252,32 +270,51 @@ def runMenu(args, parser):
 
                 actionName = menuItem
                 action = mainMenuActionNameMap[actionName]
+                value = None
+                help = action['action'].help if action['action'] is not None else None
                 if actionName == 'help':
                     help = 'show help page'
                 elif actionName == 'version':
-                    help = "show program version"
+                    help = "show version"
+                elif actionName == 'activeModConfig':
+                    value = getActiveModConfigStr()
+                    if True:
+                        help = 'the mod config to install'
                 elif actionName == 'settingsFilePath':
-                    help = 'select the current configuration file'
+                    value = getSettingsFileStr()
+                    help = 'the active settings file'
+                elif actionName == 'launcher':
+                    help = f'enter game launcher menu{" and start game" if launcherStartsGame else ""}'
                 elif actionName == 'quit':
-                    help = "quit program"
+                    # TODO: remove
+                    if False:
+                        help = "quit program"
+                    else:
+                        help = None
                 elif actionName == 'debug':
-                    help = f"turn {'off' if debug else 'on'} debug flag ({'do not ' if debug else ''}{action['action'].help})"
+                    value = getYesOrNoStr(debug)
+                    # TODO: remove
+                    if False:
+                        help = f"turn [{getOnOrOffStr(not debug)}] debug flag ({'do not ' if debug else ''}{action['action'].help})"
                 elif actionName == 'dry':
-                    help = f"turn {'off' if dryRun else 'on'} dry flag ({'do not ' if dryRun else ''}{action['action'].help})"
+                    value = getYesOrNoStr(dryRun)
+                    # TODO: remove
+                    if False:
+                        help = f"turn {getOnOrOffStr(not dryRun)} dry flag ({'do not ' if dryRun else ''}{action['action'].help})"
                 elif actionName == 'overwrite':
-                    help = f"switch overwrite mode ({action['action'].help})"
+                    value = getOverwriteModeStr()
+                    if False:
+                        help = f"switch overwrite mode ({action['action'].help})"
+                    else:
+                        help = 'overwrite existing files'
                 elif actionName == 'folder':
-                    help = f'open settings folder in explorer'
+                    help = f'open settings folder'
                 elif actionName == 'edit':
                     help = f'open settings in editor'
                 elif actionName == 'results':
-                    help = f'open action results in editor'
-                elif action['action'] is not None:
-                    help = action['action'].help
-                else:
-                    help = actionName
+                    help = f'open command results in editor'
 
-                sprint(f"[ {action['number']} ] {actionName[0].upper()}{actionName[1:]} - {help}")
+                sprint(f"[ {action['number']} ] {actionName[0].upper()}{actionName[1:]}{f' [{value}]' if value else ''}{f' - {help}' if help else ''}")
             sprintPad()
 
         if menuSettingsDirty:
@@ -479,7 +516,7 @@ def runMenu(args, parser):
             if popAction('install'):
                 installingMods = True
                 shouldRunMain = True
-            if popAction('launch'):
+            if popAction('launcher'):
                 openingGameLauncher = True
                 shouldRunMain = True
             if popAction('kill'):
@@ -535,7 +572,7 @@ def runMenu(args, parser):
             if popAction('debug'):
                 prepActionRun()
                 debug = not debug
-                sprint(f"Turned debug flag {'on' if debug else 'off'}")
+                sprint(f"Turned debug flag {getOnOrOffStr(debug)}")
                 sprintPad()
                 menuSettings['debug'] = debug
                 menuSettingsDirty = True
@@ -544,7 +581,7 @@ def runMenu(args, parser):
             if popAction('dry'):
                 prepActionRun()
                 dryRun = not dryRun
-                sprint(f"Turned dryRun flag {'on' if dryRun else 'off'}")
+                sprint(f"Turned dryRun flag {getOnOrOffStr(dryRun)}")
                 sprintPad()
                 menuSettings['dryRun'] = dryRun
                 menuSettingsDirty = True
@@ -558,7 +595,7 @@ def runMenu(args, parser):
                     overwriteOverride = None
                 else:
                     overwriteOverride = True
-                sprint(f"Switched overwrite mode to `{'overwrite' if overwriteOverride else 'no overwrite' if overwriteOverride is False else 'prompt'}`")
+                sprint(f"Switched overwrite mode to `{getOverwriteModeStr()}``")
                 sprintPad()
                 menuSettings['overwriteOverride'] = overwriteOverride
                 menuSettingsDirty = True
@@ -578,6 +615,7 @@ def runMenu(args, parser):
                     paking=paking,
                     installingMods=installingMods,
                     openingGameLauncher=openingGameLauncher,
+                    launcherStartsGame=launcherStartsGame,
                     killingGame=killingGame,
                     nonInteractive=False,
                     debug=debug,

@@ -9,11 +9,12 @@ import sys
 from consoleHelpers import sprint, sprintPad
 from customizationItemDbHelpers import CustomizationItemDbAssetName
 from pathHelpers import getPathInfo
-from programMetaData import ProgramName, Version
-from runCommand import runCommand
+from programMetaData import ConsoleTitle, ProgramName, Version
+from runCommand import DefaultLauncherStartsGame, runCommand
 from runMenu import runMenu
 from settingsHelpers import DefaultSettingsPath
 from uassetHelpers import UassetGuiProgramStem
+from windowsHelpers import setConsoleTitle
 
 __author__ = 'Ross Adamson'
 __version__ = Version
@@ -44,7 +45,7 @@ run `ActiveModConfig`, `Install`, and `Launch` to start the game with your mod c
     )
     parser.add_argument(
         '--activeModConfig',
-        help=f'set the active mod configuration (overrides `activeModConfig` setting)',
+        help=f'override active mod configuration',
         type=str,
     )
     parser.add_argument(
@@ -64,7 +65,7 @@ run `ActiveModConfig`, `Install`, and `Launch` to start the game with your mod c
     )
     parser.add_argument(
         '--rename',
-        help='rename attachment files to match their corresponding attachment ID (IDs should be globally unique)',
+        help='rename each attachment file to match its attachment name',
         action='store_true',
     )
     parser.add_argument(
@@ -74,42 +75,47 @@ run `ActiveModConfig`, `Install`, and `Launch` to start the game with your mod c
     )
     parser.add_argument(
         '--pak',
-        help='pak content into pakchunk',
+        help='pak content into a pakchunk',
         action='store_true',
     )
     parser.add_argument(
         '--install',
-        help='intall active mod configuration into the game',
+        help='apply the active mod config to the game',
         action='store_true',
     )
     parser.add_argument(
-        '--launch',
-        help='open game launcher menu and start the game',
+        '--launcher',
+        help='enter game launcher menu (and optionally auto launch the game)',
         action='store_true',
+    )
+    parser.add_argument(
+        '--autoLaunch',
+        help=f'automatically launch the game when entering the launcher menu ({"on" if DefaultLauncherStartsGame else "off"} by default)',
+        action=argparse.BooleanOptionalAction,
     )
     parser.add_argument(
         '--kill',
-        help='kill running game',
+        help="end the game process if it's running",
         action='store_true',
     )
     parser.add_argument(
         '--overwrite',
-        help='force or prevent file overwrites without prompting',
+        help='overwrite existing files (default is to ask)',
         action=argparse.BooleanOptionalAction,
     )
     parser.add_argument(
         '--dry',
-        help='run without making changes to mods to see what would happen',
+        help='simulate actions without making any file changes',
         action=argparse.BooleanOptionalAction,
     )
     parser.add_argument(
         '--debug',
-        help='output extra debug info to the console',
+        help='output extra info to the console',
         action='store_true',
     )
     parser.add_argument(
         '-ni',
-        help='run in non-interactive mode',
+        help='run non-interactively',
         action='store_true',
     )
     parser.add_argument(
@@ -118,6 +124,8 @@ run `ActiveModConfig`, `Install`, and `Launch` to start the game with your mod c
         version=f'%(prog)s {Version}',
     )
     args = parser.parse_args()
+
+    setConsoleTitle(ConsoleTitle)
 
     if args.ni:
         sprint('Running in non-interactive mode.')
@@ -130,7 +138,7 @@ run `ActiveModConfig`, `Install`, and `Launch` to start the game with your mod c
         and not args.mix
         and not args.pak
         and not args.install
-        and not args.launch
+        and not args.launcher
         and not args.kill
         and not args.ni
     ):
@@ -146,7 +154,8 @@ run `ActiveModConfig`, `Install`, and `Launch` to start the game with your mod c
             mixingAttachments=args.mix,
             paking=args.pak,
             installingMods=args.install,
-            openingGameLauncher=args.launch,
+            openingGameLauncher=args.launcher,
+            launcherStartsGame=args.autoLaunch,
             killingGame=args.kill,
             uassetGuiPath=args.uassetGuiPath,
             dryRun=args.dry,
