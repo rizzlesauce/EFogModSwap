@@ -1,6 +1,6 @@
 # DbdModSwap
 
-![Screenshot 2024-10-17 011721](https://github.com/user-attachments/assets/16e1a76b-da54-40f8-885e-373f2782f5d5)
+![Screenshot 2024-10-17 023903](https://github.com/user-attachments/assets/325990e8-1270-48b2-aee8-362a1187efb2)
 
 A DBD mod manager CLI tool for swapping mod groups at runtime, paking and installing mods from lists of cooked assets,
 and creating custom character slots by mixing game socket attachments with character models.
