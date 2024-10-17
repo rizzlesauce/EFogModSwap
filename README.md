@@ -2,7 +2,7 @@
 
 ![Screenshot 2024-10-17 023903](https://github.com/user-attachments/assets/325990e8-1270-48b2-aee8-362a1187efb2)
 
-A DBD mod manager CLI tool for swapping mod groups at runtime, paking and installing mods from lists of cooked assets,
+A DBD mod manager CLI for swapping mods between games, paking mods from lists of cooked assets,
 and creating custom character slots by mixing game socket attachments with character models.
 
 It also includes a customized game launcher menu, as well as a tool for extracting socket attachment definitions
@@ -54,7 +54,7 @@ launcherStartsGame: false
 
 ## Mod configurations
 
-If you want to quickly swap out different mod groups at runtime, check out these settings in the
+If you want to quickly swap out different mods between games, check out these settings in the
 settings file:
 * `modGroups`
 * `modConfigs`
