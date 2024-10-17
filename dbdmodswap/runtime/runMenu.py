@@ -3,17 +3,20 @@ import platform
 
 import yaml
 
-from consoleHelpers import (esprint, promptToContinue, sprint, sprintClear,
-                            sprintPad, sprintput, sprintSeparator)
-from gameHelpers import getGameIsRunning, getGameServerIsRunning
-from pathHelpers import getPathInfo
-from programMetaData import ProgramName, Version
-from runCommand import (DefaultLauncherStartsGame, readSettingsRecursive,
-                        runCommand)
-from settingsHelpers import (DefaultSettingsPath, findSettingsFiles,
-                             getResultsFilePath)
-from windowsHelpers import openFile, openFolder
-from yamlHelpers import yamlDump
+from dbdmodswap.helpers.consoleHelpers import (esprint, promptToContinue,
+                                               sprint, sprintClear, sprintPad,
+                                               sprintput, sprintSeparator)
+from dbdmodswap.helpers.gameHelpers import (getGameIsRunning,
+                                            getGameServerIsRunning)
+from dbdmodswap.helpers.pathHelpers import getPathInfo
+from dbdmodswap.helpers.settingsHelpers import (DefaultSettingsPath,
+                                                findSettingsFiles,
+                                                getResultsFilePath)
+from dbdmodswap.helpers.windowsHelpers import openFile, openFolder
+from dbdmodswap.helpers.yamlHelpers import yamlDump
+from dbdmodswap.metadata.programMetaData import ProgramName, Version
+from dbdmodswap.runtime.runCommand import (DefaultLauncherStartsGame,
+                                           readSettingsRecursive, runCommand)
 
 
 def reportAmbigous(token, matchingItems):

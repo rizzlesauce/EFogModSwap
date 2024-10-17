@@ -1,11 +1,12 @@
 import os
 import re
 
-from consoleHelpers import sprint, sprintP, sprintPad
-from pathHelpers import getPathInfo, normPath
-from processHelpers import runCall
-from programMetaData import ProgramName
-from tempFileHelpers import openTemporaryFile
+from dbdmodswap.metadata.programMetaData import ProgramName
+
+from .consoleHelpers import sprint, sprintP, sprintPad
+from .pathHelpers import getPathInfo, normPath
+from .processHelpers import runCall
+from .tempFileHelpers import openTemporaryFile
 
 DefaultPlatform = 'WindowsNoEditor'
 

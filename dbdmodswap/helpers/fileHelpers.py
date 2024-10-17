@@ -1,6 +1,6 @@
 import os
 
-from pathHelpers import normPath
+from .pathHelpers import normPath
 
 
 def listFilesRecursively(dir):

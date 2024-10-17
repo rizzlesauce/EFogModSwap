@@ -1,10 +1,11 @@
 import os
 import shutil
 
-from pathHelpers import normPath
-from programMetaData import ProgramName
-from tempFileHelpers import openTemporaryFile
-from windowsHelpers import checkTaskRunning, killTask
+from dbdmodswap.metadata.programMetaData import ProgramName
+
+from .pathHelpers import normPath
+from .tempFileHelpers import openTemporaryFile
+from .windowsHelpers import checkTaskRunning, killTask
 
 DefaultLauncherRelPath = '4.4.2 Launcher.bat'
 DefaultGameName = 'DeadByDaylight'

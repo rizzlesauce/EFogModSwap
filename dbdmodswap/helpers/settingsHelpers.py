@@ -1,11 +1,12 @@
 import os
 
-from customizationItemDbHelpers import CustomizationItemDbAssetName
-from pakHelpers import UnrealPakProgramFilename, UnrealPakProgramStem
-from pathHelpers import normPath
-from programMetaData import ProgramName, Version
-from uassetHelpers import UassetGuiProgramFilename, UassetGuiProgramStem
-from unrealEngineHelpers import UassetFilenameSuffix
+from dbdmodswap.metadata.programMetaData import ProgramName, Version
+
+from .customizationItemDbHelpers import CustomizationItemDbAssetName
+from .pakHelpers import UnrealPakProgramFilename, UnrealPakProgramStem
+from .pathHelpers import normPath
+from .uassetHelpers import UassetGuiProgramFilename, UassetGuiProgramStem
+from .unrealEngineHelpers import UassetFilenameSuffix
 
 DefaultSettingsFileStem = 'settings'
 DefaultSettingsPath = f'{DefaultSettingsFileStem}.yaml'

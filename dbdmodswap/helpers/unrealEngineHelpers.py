@@ -1,6 +1,6 @@
 import os
 
-from pathHelpers import normPath
+from .pathHelpers import normPath
 
 UassetFilenameSuffix = '.uasset'
 UnrealEngineCookedSplitFileExtensions = {UassetFilenameSuffix, '.ubulk', '.uexp'}

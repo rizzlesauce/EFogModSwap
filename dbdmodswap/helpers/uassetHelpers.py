@@ -1,5 +1,4 @@
-from processHelpers import runCall
-
+from .processHelpers import runCall
 
 ItemTypeName = '$type'
 NameFieldName = 'Name'

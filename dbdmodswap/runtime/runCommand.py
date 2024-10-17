@@ -9,46 +9,53 @@ from itertools import combinations
 
 import yaml
 
-from attachmentHelpers import (basicAttachmentTemplate,
-                               getAttachmentDisplayName, getAttachmentFilename)
-from consoleHelpers import (clearSprintRecording, confirm, confirmOverwrite,
-                            esprint, getSprintIsRecording, oneLinePrinter,
-                            promptToContinue, replaySprintRecording, sprint,
-                            sprintClear, sprintPad, sprintput,
-                            startSprintRecording)
-from customizationItemDbHelpers import (CustomizationItemDbAssetName,
-                                        ECustomizationCategoryName,
-                                        ECustomizationCategoryNamePrefix,
-                                        ModelDisplayNamePropNameFieldName,
-                                        addAllToNameMap,
-                                        findSocketAttachmentsStruct,
-                                        generateRandomHexString,
-                                        getModelDisplayNameProperty,
-                                        getModelIdProperty, getModelName,
-                                        getSocketAttachments, getUiDataValues,
-                                        md5Hash, setModelName, sha256Hash)
-from fileHelpers import listFilesRecursively
-from gameHelpers import (getGameIsRunning, getGamePaksDir, killGame,
-                         openGameLauncher)
-from jsonHelpers import jsonDump, jsonifyDataRecursive
-from pakHelpers import (DefaultPlatform, PakchunkFilenameSuffix,
-                        getPakContentDir, pakchunkRefnamePartsDictToRefname,
-                        pakchunkRefnamePartsToRefname,
-                        pakchunkRefnameToFilename, pakchunkRefnameToParts,
-                        unrealPak, unrealUnpak)
-from pathHelpers import getPathInfo, normPath
-from programMetaData import ConsoleTitle
-from settingsHelpers import (DefaultAttachmentsDir, DefaultPakingDir,
-                             findSettingsFiles, getContentDirRelativePath,
-                             getResultsFilePath, getSettingsTemplate)
-from uassetHelpers import (ItemTypeName, NameFieldName, ValueFieldName,
-                           findEnumByType, findNextItemByFields,
-                           findNextItemByType, getEnumValue, getPropertyValue,
-                           jsonToUasset, setPropertyValue, uassetToJson)
-from unrealEngineHelpers import (UnrealEngineCookedSplitFileExtensions,
-                                 getUnrealProjectCookedContentDir)
-from windowsHelpers import openFolder, setConsoleTitle
-from yamlHelpers import yamlDump
+from dbdmodswap.helpers.attachmentHelpers import (basicAttachmentTemplate,
+                                                  getAttachmentDisplayName,
+                                                  getAttachmentFilename)
+from dbdmodswap.helpers.consoleHelpers import (clearSprintRecording, confirm,
+                                               confirmOverwrite, esprint,
+                                               getSprintIsRecording,
+                                               oneLinePrinter,
+                                               promptToContinue,
+                                               replaySprintRecording, sprint,
+                                               sprintClear, sprintPad,
+                                               sprintput, startSprintRecording)
+from dbdmodswap.helpers.customizationItemDbHelpers import (
+    CustomizationItemDbAssetName, ECustomizationCategoryName,
+    ECustomizationCategoryNamePrefix, ModelDisplayNamePropNameFieldName,
+    addAllToNameMap, findSocketAttachmentsStruct, generateRandomHexString,
+    getModelDisplayNameProperty, getModelIdProperty, getModelName,
+    getSocketAttachments, getUiDataValues, md5Hash, setModelName, sha256Hash)
+from dbdmodswap.helpers.fileHelpers import listFilesRecursively
+from dbdmodswap.helpers.gameHelpers import (getGameIsRunning, getGamePaksDir,
+                                            killGame, openGameLauncher)
+from dbdmodswap.helpers.jsonHelpers import jsonDump, jsonifyDataRecursive
+from dbdmodswap.helpers.pakHelpers import (DefaultPlatform,
+                                           PakchunkFilenameSuffix,
+                                           getPakContentDir,
+                                           pakchunkRefnamePartsDictToRefname,
+                                           pakchunkRefnamePartsToRefname,
+                                           pakchunkRefnameToFilename,
+                                           pakchunkRefnameToParts, unrealPak,
+                                           unrealUnpak)
+from dbdmodswap.helpers.pathHelpers import getPathInfo, normPath
+from dbdmodswap.helpers.settingsHelpers import (DefaultAttachmentsDir,
+                                                DefaultPakingDir,
+                                                findSettingsFiles,
+                                                getContentDirRelativePath,
+                                                getResultsFilePath,
+                                                getSettingsTemplate)
+from dbdmodswap.helpers.uassetHelpers import (ItemTypeName, NameFieldName,
+                                              ValueFieldName, findEnumByType,
+                                              findNextItemByFields,
+                                              findNextItemByType, getEnumValue,
+                                              getPropertyValue, jsonToUasset,
+                                              setPropertyValue, uassetToJson)
+from dbdmodswap.helpers.unrealEngineHelpers import (
+    UnrealEngineCookedSplitFileExtensions, getUnrealProjectCookedContentDir)
+from dbdmodswap.helpers.windowsHelpers import openFolder, setConsoleTitle
+from dbdmodswap.helpers.yamlHelpers import yamlDump
+from dbdmodswap.metadata.programMetaData import ConsoleTitle
 
 DefaultLauncherStartsGame = True
 

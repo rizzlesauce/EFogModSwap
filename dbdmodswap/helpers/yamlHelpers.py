@@ -1,7 +1,8 @@
-import yaml
 import json
 
-from jsonHelpers import jsonDump
+import yaml
+
+from .jsonHelpers import jsonDump
 
 
 def yamlDump(value, stream=None, customTypes=False):

@@ -3,7 +3,7 @@ import shutil
 import sys
 from contextlib import contextmanager
 
-from windowsHelpers import pressAnyKeyToContinue
+from .windowsHelpers import pressAnyKeyToContinue
 
 hasPriorPrintSection = False
 needsNewPrintSection = 0

@@ -1,8 +1,8 @@
 import hashlib
 import secrets
 
-from uassetHelpers import (ItemTypeName, NameFieldName, findNextItemByFields,
-                           findStructByType, getPropertyValue)
+from .uassetHelpers import (ItemTypeName, NameFieldName, findNextItemByFields,
+                            findStructByType, getPropertyValue)
 
 CustomizationItemDbAssetName = 'CustomizationItemDB'
 ECustomizationCategoryName = 'ECustomizationCategory'

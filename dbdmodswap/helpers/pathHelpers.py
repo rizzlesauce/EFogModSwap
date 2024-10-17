@@ -1,7 +1,7 @@
 import os
 import pathlib
 
-from consoleHelpers import sprintP, sprintPad
+from .consoleHelpers import sprintP, sprintPad
 
 
 def normPath(path):

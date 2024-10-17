@@ -6,15 +6,17 @@ Module Docstring
 import argparse
 import sys
 
-from consoleHelpers import sprint, sprintPad
-from customizationItemDbHelpers import CustomizationItemDbAssetName
-from pathHelpers import getPathInfo
-from programMetaData import ConsoleTitle, ProgramName, Version
-from runCommand import DefaultLauncherStartsGame, runCommand
-from runMenu import runMenu
-from settingsHelpers import DefaultSettingsPath
-from uassetHelpers import UassetGuiProgramStem
-from windowsHelpers import setConsoleTitle
+from dbdmodswap.helpers.consoleHelpers import sprint, sprintPad
+from dbdmodswap.helpers.customizationItemDbHelpers import \
+    CustomizationItemDbAssetName
+from dbdmodswap.helpers.pathHelpers import getPathInfo
+from dbdmodswap.helpers.settingsHelpers import DefaultSettingsPath
+from dbdmodswap.helpers.uassetHelpers import UassetGuiProgramStem
+from dbdmodswap.helpers.windowsHelpers import setConsoleTitle
+from dbdmodswap.metadata.programMetaData import (ConsoleTitle, ProgramName,
+                                                 Version)
+from dbdmodswap.runtime.runCommand import DefaultLauncherStartsGame, runCommand
+from dbdmodswap.runtime.runMenu import runMenu
 
 __author__ = 'Ross Adamson'
 __version__ = Version
