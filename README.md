@@ -16,7 +16,8 @@ from attachment blueprint game paths.
 Download the latest EXE from the releases page. Put it in a folder named DbdModSwap (or whatever
 you want to call it).
 
-Run `DbdModSwap.exe` with no arguments (or double click on it from explorer) to enter the interactive menu.
+Run `DbdModSwap.exe` with no arguments (or double click on it from file explorer) to enter the
+interactive menu.
 
 Follow the instructions in the CLI start page to generate a settings file and begin configuring. The
 settings file comes with a lot of inline documentation to help explain each setting.
