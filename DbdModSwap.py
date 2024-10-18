@@ -56,13 +56,13 @@ run `ActiveModConfig`, `Install`, and `Launch` to start the game with your mod c
         action='store_true',
     )
     parser.add_argument(
-        '--extract',
-        help='extract socket attachment definitions',
+        '--create',
+        help='create socket attachment definitions interactively',
         action='store_true',
     )
     parser.add_argument(
-        '--create',
-        help='create socket attachment definitions interactively',
+        '--extract',
+        help='extract socket attachment definitions',
         action='store_true',
     )
     parser.add_argument(
