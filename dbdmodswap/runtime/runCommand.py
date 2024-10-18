@@ -111,6 +111,7 @@ def runCommand(**kwargs):
     uassetGuiPath = kwargs.get('uassetGuiPath', '')
     overwriteOverride = kwargs.get('overwriteOverride', None)
     launcherStartsGame = kwargs.get('launcherStartsGame', None)
+    fromMenu = kwargs.get('fromMenu', False)
     dryRun = kwargs.get('dryRun', False)
 
     DryRunPrefix = '[DryRun] '
@@ -1959,7 +1960,7 @@ def runCommand(**kwargs):
 
             if shouldProceed:
                 try:
-                    exitCode = openGameLauncher(getPathInfo(gameDir)['best'], startGame=launcherStartsGame)
+                    exitCode = openGameLauncher(getPathInfo(gameDir)['best'], startGame=launcherStartsGame, fromMenu=fromMenu)
                     setConsoleTitle(ConsoleTitle)
                     # TODO: remove
                     if False:

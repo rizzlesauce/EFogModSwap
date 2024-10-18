@@ -608,6 +608,7 @@ def runMenu(args, parser):
                 prepActionRun()
                 sprintPad()
                 exitCode = runCommand(
+                    fromMenu=True,
                     settingsFilePath=settingsFilePath,
                     activeModConfigName=activeModConfigName,
                     inspecting=inspecting,

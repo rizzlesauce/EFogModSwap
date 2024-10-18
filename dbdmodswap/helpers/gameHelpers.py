@@ -31,7 +31,7 @@ def getGamePaksDir(gameDir, gameName):
     return normPath(os.path.join(gameDir, gameName, 'Content', 'Paks'))
 
 
-def openGameLauncher(gameDir, startGame=False, usingExternalLauncher=False):
+def openGameLauncher(gameDir, startGame=False, usingExternalLauncher=False, fromMenu=False):
     def runLauncherBatchScript(launcherPath):
         assert launcherPath
         return os.system(f'cd "{gameDir}" && "{launcherPath}"{" launch" if startGame else ""}')
@@ -44,7 +44,7 @@ def openGameLauncher(gameDir, startGame=False, usingExternalLauncher=False):
         if False:
             print(getLauncherBatchFileContent())
         else:
-            file.write(getLauncherBatchFileContent())
+            file.write(getLauncherBatchFileContent(usingExitMenuItem=not fromMenu or None))
             file.close()
             return runLauncherBatchScript(file.name)
 
@@ -66,10 +66,12 @@ def killGame(killServer=False):
     return [killTask(programName) for programName in targets]
 
 
-def getLauncherBatchFileContent():
+def getLauncherBatchFileContent(usingExitMenuItem=None, usingOriginalBehavior=False):
     cols, rows = shutil.get_terminal_size()
 
-    usingOriginalBehavior = False
+    if usingExitMenuItem is None:
+        usingExitMenuItem = usingOriginalBehavior or False
+
     usingOriginalCls = usingOriginalBehavior
     usingOriginalPause = usingOriginalBehavior
     usingPageClearCls = False
@@ -137,6 +139,16 @@ def getLauncherBatchFileContent():
 
         return formatLines(lines, indent)
 
+    def actionIf(action, inputMatches, indent=0):
+        lines = []
+        for inputMatch in inputMatches:
+            lines.append(f'if /I %op%=={inputMatch} {action}')
+            if usingOriginalBehavior:
+                # use only the first item (the menu number)
+                break
+
+        return formatLines(lines, indent)
+
     return (
 f'''@echo off
 setlocal enabledelayedexpansion
@@ -174,24 +186,23 @@ echo.
 echo [4] Open Paks Folder
 echo [5] Open Win64 Folder
 echo [6] Open Config Folder
-echo [7] Exit
+echo [7] {"Exit" if usingExitMenuItem else f"Exit (back to {ProgramName})"}
 echo.
 set /p op="Selection: "
-if %op%==1 goto :launch
-if %op%==2 goto :join
-if %op%==3 goto :customLobby
-if %op%==4 goto :openPaks
-if %op%==5 goto :openWin64
-if %op%==6 goto :openConfig
-if %op%==7 exit
-if %op%==ex exit
-if %op%==exi exit
-if %op%==exit exit
-if %op%==q exit
-if %op%==qu exit
-if %op%==qui exit
-if %op%==quit exit
-if %op%==return exit
+{actionIf("goto :launch", ['1', 'launch', 'launc', 'laun', 'lau', 'la', 'l', 'lnch', 'ln', 'lnc'])}
+{actionIf("goto :join", ['2', 'j', 'pubs', 'pub', 'join', 'joi', 'jo', 'jn', 'lobby'])}
+{actionIf("goto :customLobby", ['3', 'cust', 'custs', 'customs', 'custom lobby', 'customLobby', 'custom'])}
+{actionIf("goto :openPaks", ['4', 'pak', 'pk', 'pks', 'paks', 'openPaks', 'open paks'])}
+{actionIf("goto :openWin64", ['5', 'openWin64', 'win', 'win64', 'open win64'])}
+{actionIf("goto :openConfig", ['6', 'openConfig', 'open config', 'config', 'conf'])}
+{actionIf("exit", ['7',
+    *[
+        *(['x', 'ex', 'xi', 'exi', 'exit'] if usingExitMenuItem else []),
+        *(['q', 'quit', 'qu', 'qui'] if True else []),
+        *(['b', 'ba', 'bak', 'bac', 'back', 'bk'] if True else []),
+        *(['ret', 'return'] if True else []),
+    ],
+])}
 echo.
 {clearScreen(active=False)}
 echo Invalid option, Please try again.
