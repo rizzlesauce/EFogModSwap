@@ -44,7 +44,7 @@ def openGameLauncher(gameDir, startGame=False, usingExternalLauncher=False, from
         if False:
             print(getLauncherBatchFileContent())
         else:
-            file.write(getLauncherBatchFileContent(usingExitMenuItem=not fromMenu or None))
+            file.write(getLauncherBatchFileContent(usingStandaloneExitOption=not fromMenu or None))
             file.close()
             return runLauncherBatchScript(file.name)
 
@@ -66,11 +66,11 @@ def killGame(killServer=False):
     return [killTask(programName) for programName in targets]
 
 
-def getLauncherBatchFileContent(usingExitMenuItem=None, usingOriginalBehavior=False):
+def getLauncherBatchFileContent(usingStandaloneExitOption=None, usingOriginalBehavior=False):
     cols, rows = shutil.get_terminal_size()
 
-    if usingExitMenuItem is None:
-        usingExitMenuItem = usingOriginalBehavior or False
+    if usingStandaloneExitOption is None:
+        usingStandaloneExitOption = usingOriginalBehavior or False
 
     usingOriginalCls = usingOriginalBehavior
     usingOriginalPause = usingOriginalBehavior
@@ -186,7 +186,7 @@ echo.
 echo [4] Open Paks Folder
 echo [5] Open Win64 Folder
 echo [6] Open Config Folder
-echo [7] {"Exit" if usingExitMenuItem else f"Exit (back to {ProgramName})"}
+echo [7] {"Exit" if usingStandaloneExitOption else f"Exit (back to {ProgramName})"}
 echo.
 set /p op="Selection: "
 {actionIf("goto :launch", ['1', 'launch', 'launc', 'laun', 'lau', 'la', 'l', 'lnch', 'ln', 'lnc'])}
@@ -197,10 +197,10 @@ set /p op="Selection: "
 {actionIf("goto :openConfig", ['6', 'openConfig', 'open config', 'config', 'conf'])}
 {actionIf("exit", ['7',
     *[
-        *(['x', 'ex', 'xi', 'exi', 'exit'] if usingExitMenuItem else []),
-        *(['q', 'quit', 'qu', 'qui'] if True else []),
-        *(['b', 'ba', 'bak', 'bac', 'back', 'bk'] if True else []),
-        *(['ret', 'return'] if True else []),
+        *(['x', 'ex', 'xi', 'exi', 'exit'] if usingStandaloneExitOption or True else []),
+        *(['q', 'quit', 'qu', 'qui'] if not usingStandaloneExitOption or True else []),
+        *(['b', 'ba', 'bak', 'bac', 'back', 'bk'] if not usingStandaloneExitOption else []),
+        *(['ret', 'return'] if not usingStandaloneExitOption or True else []),
     ],
 ])}
 echo.
