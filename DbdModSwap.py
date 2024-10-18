@@ -40,7 +40,7 @@ run `ActiveModConfig`, `Install`, and `Launch` to start the game with your mod c
         ),
     )
     parser.add_argument(
-        'settingsFilePath',
+        'settingsFile',
         help=f'path to settings YAML file (defaults to `{getPathInfo(DefaultSettingsPath)["best"]}`)',
         type=str,
         nargs='?',
@@ -147,7 +147,7 @@ run `ActiveModConfig`, `Install`, and `Launch` to start the game with your mod c
         exitCode = runMenu(args, parser)
     else:
         exitCode = runCommand(
-            settingsFilePath=args.settingsFilePath,
+            settingsFilePath=args.settingsFile,
             activeModConfigName=args.activeModConfig,
             inspecting=args.list,
             creatingAttachments=args.create,

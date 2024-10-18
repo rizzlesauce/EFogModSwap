@@ -120,19 +120,25 @@ def runMenu(args, parser):
 
     exitCode = 0
 
-    settingsFilePath = getPathInfo(args.settingsFilePath or menuSettings.get('settingsFilePath', DefaultSettingsPath))['best']
+    settingsFilePath = getPathInfo(args.settingsFile or menuSettings.get('settingsFilePath', DefaultSettingsPath))['best']
+    if settingsFilePath != menuSettings.get('settingsFilePath', None):
+        menuSettings['settingsFilePath'] = settingsFilePath
+        menuSettingsDirty = True
     settingsFileExists = False
     settingsFileValid = False
     settings = {}
+
     userSpecifiedModConfigName = (args.activeModConfig or '').strip() or menuSettings.get('activeModConfig', None)
     activeModConfigName = None
     activeModConfigExists = False
+
     launcherStartsGame = args.autoLaunch if isinstance(args.autoLaunch, bool) else menuSettings.get('launcherStartsGame', None)
     if launcherStartsGame is None:
         launcherStartsGame = DefaultLauncherStartsGame
     if launcherStartsGame is not None and launcherStartsGame != menuSettings.get('launcherStartsGame', None):
         menuSettings['launcherStartsGame'] = launcherStartsGame
         menuSettingsDirty = True
+
     debug = args.debug or menuSettings.get('debug', False)
     dryRun = args.dry or menuSettings.get('dryRun', False)
     overwriteOverride = args.overwrite if args.overwrite is not None else menuSettings.get('overwriteOverride', None)
@@ -190,36 +196,90 @@ def runMenu(args, parser):
 
     actionsMap = {action.dest: action for action in parser._actions}
 
-    mainMenuItems = [
-        {'title': 'Game'},
-        'activeModConfig',
-        'install',
-        'launcher',
-        'kill',
-        {'title': 'Settings'},
-        'settingsFilePath',
-        'edit',
-        'results',
-        'folder',
-        {'title': 'Modding'},
-        'list',
-        'create',
-        'extract',
-        'rename',
-        'mix',
-        'pak',
-        {'title': 'Flags'},
-        'overwrite',
-        'dry',
-        'debug',
-        {'title': 'About'},
-        'version',
-        'help',
-        'quit',
-    ]
-    mainMenuActionNames = [item for item in mainMenuItems if isinstance(item, str)]
-    mainMenuActionNameMap = {actionName: { 'name': actionName, 'number': i + 1, 'action': actionsMap.get(actionName, None) } for i, actionName in enumerate(mainMenuActionNames)}
-    mainMenuActions = mainMenuActionNameMap.values()
+    mainMenu = {
+        'name': 'main',
+        'items': [
+            {'title': 'Game'},
+            'activeModConfig',
+            'install',
+            'launcher',
+            'kill',
+            {'title': 'Settings'},
+            'settingsFile',
+            'edit',
+            'results',
+            'folder',
+            {
+                'name': 'moreOptions',
+                'items': [
+                    {'title': 'More Options'},
+                    'autoLaunch',
+                    'back',
+                    {'name': 'quit', 'hidden': True},
+                ],
+            },
+            {'title': 'Modding'},
+            'list',
+            'create',
+            'extract',
+            'rename',
+            'mix',
+            'pak',
+            {'title': 'Flags'},
+            'overwrite',
+            'dry',
+            'debug',
+            {'title': 'About'},
+            'version',
+            'help',
+            'quit',
+        ]
+    }
+
+    activeMenu = None
+    activeMenuActionNameMap = {}
+    activeMenuActions = []
+    activeMenuSubMenuMap = {}
+
+    menuStack = []
+
+    def getMenuItemObject(menuItem):
+        if isinstance(menuItem, dict):
+            return menuItem
+
+        return {
+            'name': menuItem,
+        }
+
+    def setMenu(menu):
+        nonlocal activeMenu
+        nonlocal activeMenuActionNameMap
+        nonlocal activeMenuSubMenuMap
+        nonlocal activeMenuActions
+
+        activeMenuObjects = [getMenuItemObject(item) for item in menu['items']]
+        activeMenuActionNames = [item['name'] for item in activeMenuObjects if item.get('name', None)]
+        activeMenuSubMenuMap = {item['name']: item for item in activeMenuObjects if item.get('items', None)}
+        activeMenuActionNameMap = {
+            actionName: {
+                'name': actionName,
+                'number': i + 1,
+                'action': actionsMap.get(actionName, None),
+            } for i, actionName in enumerate(activeMenuActionNames)
+        }
+        activeMenuActions = activeMenuActionNameMap.values()
+        activeMenu = menu
+
+    def pushMenu(menu):
+        assert menu
+        menuStack.append(menu)
+        setMenu(menu)
+
+    def popMenu():
+        menuStack.pop()
+        setMenu(menuStack[-1])
+
+    pushMenu(mainMenu)
 
     while True:
         inspecting = False
@@ -262,17 +322,19 @@ def runMenu(args, parser):
 
             sprintPad()
 
-            for menuItem in mainMenuItems:
-                if not isinstance(menuItem, str):
-                    title = menuItem.get('title', '')
+            for menuItem in activeMenu['items']:
+                menuItemObject = getMenuItemObject(menuItem)
+
+                actionName = menuItemObject.get('name', None)
+                if not actionName:
+                    title = menuItemObject.get('title', '')
                     if title:
                         sprint(f'------------  {title}  ------------')
                     else:
                         sprintPad()
                     continue
 
-                actionName = menuItem
-                action = mainMenuActionNameMap[actionName]
+                action = activeMenuActionNameMap[actionName]
                 value = None
                 help = action['action'].help if action['action'] is not None else None
                 if actionName == 'help':
@@ -283,11 +345,11 @@ def runMenu(args, parser):
                     value = getActiveModConfigStr()
                     if True:
                         help = 'the mod config to install'
-                elif actionName == 'settingsFilePath':
+                elif actionName == 'settingsFile':
                     value = getSettingsFileStr()
                     help = 'the active settings file'
                 elif actionName == 'launcher':
-                    help = f'enter game launcher menu{" and start game" if launcherStartsGame else ""}'
+                    help = f'enter launcher menu{" and start game" if launcherStartsGame else ""}'
                 elif actionName == 'quit':
                     # TODO: remove
                     if False:
@@ -310,14 +372,19 @@ def runMenu(args, parser):
                         help = f"switch overwrite mode ({action['action'].help})"
                     else:
                         help = 'overwrite existing files'
+                elif actionName == 'autoLaunch':
+                    value = getYesOrNoStr(launcherStartsGame)
+                elif actionName == 'moreOptions':
+                    help = 'more options and settings'
                 elif actionName == 'folder':
-                    help = f'open settings folder'
+                    help = f'open settings file folder'
                 elif actionName == 'edit':
                     help = f'open settings in editor'
                 elif actionName == 'results':
                     help = f'open command results in editor'
 
-                sprint(f"[ {action['number']} ] {actionName[0].upper()}{actionName[1:]}{f' [{value}]' if value else ''}{f' - {help}' if help else ''}")
+                if not menuItemObject.get('hidden', False):
+                    sprint(f"[ {action['number']} ] {actionName[0].upper()}{actionName[1:]}{f' [{value}]' if value else ''}{f' - {help}' if help else ''}")
             sprintPad()
 
         if menuSettingsDirty:
@@ -335,7 +402,7 @@ def runMenu(args, parser):
 
         tokens = response.split()
         hasError = False
-        results = [parseMenuItemFromToken(token, mainMenuActions) for token in tokens]
+        results = [parseMenuItemFromToken(token, activeMenuActions) for token in tokens]
 
         # TODO: remove
         if False:
@@ -416,7 +483,7 @@ def runMenu(args, parser):
                 sprint(f'{parser.prog} {Version}')
                 shouldPromptToContinue = True
 
-            if popAction('settingsFilePath'):
+            if popAction('settingsFile'):
                 prepActionRun()
                 filenames = []
                 for filenameIndex, filename in enumerate(findSettingsFiles()):
@@ -456,7 +523,7 @@ def runMenu(args, parser):
                             break
                 readSettings()
                 sprintSeparator()
-                sprint(f'Settings path set to: {getSettingsFileStr()}')
+                sprint(f'Settings file path set to: {getSettingsFileStr()}')
                 menuSettings['settingsFilePath'] = settingsFilePath
                 menuSettingsDirty = True
                 shouldPromptToContinue = True
@@ -604,6 +671,15 @@ def runMenu(args, parser):
                 menuSettingsDirty = True
                 shouldPromptToContinue = shouldPromptToContinueForSettings
 
+            if popAction('autoLaunch'):
+                prepActionRun()
+                launcherStartsGame = not launcherStartsGame
+                sprint(f"Turned auto launch flag {getOnOrOffStr(launcherStartsGame)}")
+                sprintPad()
+                menuSettings['launcherStartsGame'] = launcherStartsGame
+                menuSettingsDirty = True
+                shouldPromptToContinue = shouldPromptToContinueForSettings
+
             if shouldRunMain:
                 prepActionRun()
                 sprintPad()
@@ -631,6 +707,19 @@ def runMenu(args, parser):
                     pass
                 else:
                     shouldPromptToContinue = True
+
+            if not shouldQuit:
+                didPushMenu = False
+                for actionName in actionNamesRemaining.copy():
+                    subMenu = activeMenuSubMenuMap.get(actionName)
+                    if subMenu is not None:
+                        popAction(actionName)
+                        pushMenu(subMenu)
+                        didPushMenu = True
+                        break
+
+                if not didPushMenu and popAction('back'):
+                    popMenu()
 
             if actionNamesRemaining:
                 if ranPriorAction:
