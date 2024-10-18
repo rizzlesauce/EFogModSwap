@@ -129,7 +129,7 @@ def runMenu(args, parser):
     activeModConfigExists = False
     launcherStartsGame = args.autoLaunch if isinstance(args.autoLaunch, bool) else menuSettings.get('launcherStartsGame', None)
     if launcherStartsGame is None:
-        launcherStartsGmae = DefaultLauncherStartsGame
+        launcherStartsGame = DefaultLauncherStartsGame
     if launcherStartsGame is not None and launcherStartsGame != menuSettings.get('launcherStartsGame', None):
         menuSettings['launcherStartsGame'] = launcherStartsGame
         menuSettingsDirty = True
