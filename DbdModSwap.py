@@ -10,7 +10,7 @@ from dbdmodswap.helpers.consoleHelpers import sprint, sprintPad
 from dbdmodswap.helpers.customizationItemDbHelpers import \
     CustomizationItemDbAssetName
 from dbdmodswap.helpers.pathHelpers import getPathInfo
-from dbdmodswap.helpers.settingsHelpers import DefaultSettingsPath
+from dbdmodswap.helpers.settingsHelpers import DefaultSettingsPath, getEnabledDisabledStr
 from dbdmodswap.helpers.uassetHelpers import UassetGuiProgramStem
 from dbdmodswap.helpers.windowsHelpers import setConsoleTitle
 from dbdmodswap.metadata.programMetaData import (ConsoleTitle, ProgramName,
@@ -41,7 +41,7 @@ run `ActiveModConfig`, `Install`, and `Launch` to start the game with your mod c
     )
     parser.add_argument(
         'settingsFile',
-        help=f'path to settings YAML file (defaults to `{getPathInfo(DefaultSettingsPath)["best"]}`)',
+        help=f'path to settings YAML file (default: `{getPathInfo(DefaultSettingsPath)["best"]}`)',
         type=str,
         nargs='?',
     )
@@ -92,7 +92,7 @@ run `ActiveModConfig`, `Install`, and `Launch` to start the game with your mod c
     )
     parser.add_argument(
         '--autoLaunch',
-        help=f'automatically launch the game when entering the launcher menu ({"on" if DefaultLauncherStartsGame else "off"} by default)',
+        help=f'automatically start the game when entering the launcher menu (default: {getEnabledDisabledStr(DefaultLauncherStartsGame)})',
         action=argparse.BooleanOptionalAction,
     )
     parser.add_argument(
@@ -102,13 +102,13 @@ run `ActiveModConfig`, `Install`, and `Launch` to start the game with your mod c
     )
     parser.add_argument(
         '--overwrite',
-        help='overwrite existing files (default is to ask)',
+        help='overwrite existing files (default: ask to confirm)',
         action=argparse.BooleanOptionalAction,
     )
     parser.add_argument(
-        '--dry',
+        '--dryRun',
         help='simulate actions without making any file changes',
-        action=argparse.BooleanOptionalAction,
+        action='store_true',
     )
     parser.add_argument(
         '--debug',
@@ -160,7 +160,7 @@ run `ActiveModConfig`, `Install`, and `Launch` to start the game with your mod c
             launcherStartsGame=args.autoLaunch,
             killingGame=args.kill,
             uassetGuiPath=args.uassetGuiPath,
-            dryRun=args.dry,
+            dryRun=args.dryRun,
             overwriteOverride=args.overwrite,
             debug=args.debug,
             nonInteractive=args.ni,

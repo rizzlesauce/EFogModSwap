@@ -12,11 +12,20 @@ from dbdmodswap.helpers.pathHelpers import getPathInfo
 from dbdmodswap.helpers.settingsHelpers import (DefaultSettingsPath,
                                                 findSettingsFiles,
                                                 getResultsFilePath)
+from dbdmodswap.helpers.settingsHelpers import getEnabledDisabledStr
 from dbdmodswap.helpers.windowsHelpers import openFile, openFolder
 from dbdmodswap.helpers.yamlHelpers import yamlDump
 from dbdmodswap.metadata.programMetaData import ProgramName, Version
 from dbdmodswap.runtime.runCommand import (DefaultLauncherStartsGame,
                                            readSettingsRecursive, runCommand)
+
+
+def getYesOrNoStr(flag):
+    return 'yes' if flag else 'no'
+
+
+def getOnOrOffStr(flag):
+    return 'on' if flag else 'off'
 
 
 def reportAmbigous(token, matchingItems):
@@ -140,14 +149,10 @@ def runMenu(args, parser):
         menuSettingsDirty = True
 
     debug = args.debug or menuSettings.get('debug', False)
-    dryRun = args.dry or menuSettings.get('dryRun', False)
+    dryRun = args.dryRun or menuSettings.get('dryRun', False)
     overwriteOverride = args.overwrite if args.overwrite is not None else menuSettings.get('overwriteOverride', None)
 
-    def getYesOrNoStr(flag):
-        return 'yes' if flag else 'no'
-
-    def getOnOrOffStr(flag):
-        return 'on' if flag else 'off'
+    getFlagValueStr = getEnabledDisabledStr
 
     def getSettingsFileStr():
         return f'"{settingsFilePath}"{((" (loaded)" if False else "") if settingsFileValid else " (invalid)") if settingsFileExists else " (new file)"}' if settingsFilePath else '<Not specified>'
@@ -227,7 +232,7 @@ def runMenu(args, parser):
             'pak',
             {'title': 'Flags'},
             'overwrite',
-            'dry',
+            'dryRun',
             'debug',
             {'title': 'About'},
             'version',
@@ -313,8 +318,8 @@ def runMenu(args, parser):
                 sprint(f'Settings file: {getSettingsFileStr()}')
                 sprint(f'Active mod config: {getActiveModConfigStr()}')
                 sprint(f"Overwrite files: {getOverwriteModeStr()}")
-                sprint(f"Dry run: {getYesOrNoStr(dryRun)}")
-                sprint(f"Debug: {getYesOrNoStr(debug)}")
+                sprint(f"Dry run: {getFlagValueStr(dryRun)}")
+                sprint(f"Debug: {getFlagValueStr(debug)}")
             if showServerRunning:
                 sprint(f'Game server running: {getYesOrNoStr(gameServerRunning)}')
             if showGameRunning:
@@ -357,12 +362,12 @@ def runMenu(args, parser):
                     else:
                         help = None
                 elif actionName == 'debug':
-                    value = getYesOrNoStr(debug)
+                    value = getFlagValueStr(debug)
                     # TODO: remove
                     if False:
                         help = f"turn [{getOnOrOffStr(not debug)}] debug flag ({'do not ' if debug else ''}{action['action'].help})"
-                elif actionName == 'dry':
-                    value = getYesOrNoStr(dryRun)
+                elif actionName == 'dryRun':
+                    value = getFlagValueStr(dryRun)
                     # TODO: remove
                     if False:
                         help = f"turn {getOnOrOffStr(not dryRun)} dry flag ({'do not ' if dryRun else ''}{action['action'].help})"
@@ -373,7 +378,7 @@ def runMenu(args, parser):
                     else:
                         help = 'overwrite existing files'
                 elif actionName == 'autoLaunch':
-                    value = getYesOrNoStr(launcherStartsGame)
+                    value = getFlagValueStr(launcherStartsGame)
                 elif actionName == 'moreOptions':
                     help = 'more options and settings'
                 elif actionName == 'folder':
@@ -648,10 +653,10 @@ def runMenu(args, parser):
                 menuSettingsDirty = True
                 shouldPromptToContinue = shouldPromptToContinueForSettings
 
-            if popAction('dry'):
+            if popAction('dryRun'):
                 prepActionRun()
                 dryRun = not dryRun
-                sprint(f"Turned dryRun flag {getOnOrOffStr(dryRun)}")
+                sprint(f"Turned dry run flag {getOnOrOffStr(dryRun)}")
                 sprintPad()
                 menuSettings['dryRun'] = dryRun
                 menuSettingsDirty = True

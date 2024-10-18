@@ -303,3 +303,7 @@ def findSettingsFiles(dir='.'):
 
 def getResultsFilePath(settingsFilePath):
     return f"{settingsFilePath.removesuffix('.yaml')}-results.yaml"
+
+
+def getEnabledDisabledStr(flag):
+    return 'enabled' if flag else 'disabled'
