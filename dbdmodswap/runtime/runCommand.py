@@ -27,8 +27,8 @@ from dbdmodswap.helpers.customizationItemDbHelpers import (
     getModelDisplayNameProperty, getModelIdProperty, getModelName,
     getSocketAttachments, getUiDataValues, md5Hash, setModelName, sha256Hash)
 from dbdmodswap.helpers.fileHelpers import listFilesRecursively
-from dbdmodswap.helpers.gameHelpers import (getGameIsRunning, getGamePaksDir,
-                                            killGame, openGameLauncher)
+from dbdmodswap.helpers.gameHelpers import (getGameIsRunning, getGameLobbyIsRunning, getGamePaksDir, getGameServerIsRunning,
+                                            killGame, killGameLobby, killGameServer, openGameLauncher)
 from dbdmodswap.helpers.jsonHelpers import jsonDump, jsonifyDataRecursive
 from dbdmodswap.helpers.pakHelpers import (DefaultPlatform,
                                            PakchunkFilenameSuffix,
@@ -53,7 +53,7 @@ from dbdmodswap.helpers.uassetHelpers import (ItemTypeName, NameFieldName,
                                               setPropertyValue, uassetToJson)
 from dbdmodswap.helpers.unrealEngineHelpers import (
     UnrealEngineCookedSplitFileExtensions, getUnrealProjectCookedContentDir)
-from dbdmodswap.helpers.windowsHelpers import openFolder, setConsoleTitle
+from dbdmodswap.helpers.windowsHelpers import getIsRunningAsAdmin, openFolder, setConsoleTitle
 from dbdmodswap.helpers.yamlHelpers import yamlDump
 from dbdmodswap.metadata.programMetaData import ConsoleTitle
 
@@ -174,12 +174,59 @@ def runCommand(**kwargs):
         sprintPad()
         sprint(f'{dryRunPrefix}Killing game...')
         if getGameIsRunning():
+            didIt = False
             if not dryRun:
-                killGame()
-            sprint(f'{dryRunPrefix}Game process terminated.')
+                killExitCode = killGame()
+                if killExitCode:
+                    printError(f'killing game returned exit code: {killExitCode}')
+                else:
+                    didIt = True
+            if didIt:
+                sprint(f'{dryRunPrefix}Game process terminated.')
             # TODO: need to wait?
         else:
             sprint('Game is not running.')
+        sprintPad()
+        sprint(f'{dryRunPrefix}Killing game lobby...')
+        if getGameLobbyIsRunning():
+            shouldDoIt = True
+            if not getIsRunningAsAdmin():
+                sprint('Must gain elevated access to kill lobby')
+                if nonInteractive:
+                    printError('Cannot gain elevated access in non-interactive mode')
+                else:
+                    shouldDoIt = confirm('continue to UAC')
+
+            if shouldDoIt:
+                didIt = False
+                if not dryRun:
+                    killExitCode = killGameLobby()
+                    if killExitCode:
+                        printError(f'killing lobby returned exit code: {killExitCode}')
+                    else:
+                        didIt = True
+                if didIt:
+                    sprint(f'{dryRunPrefix}Lobby process terminated.')
+                    # TODO: need to wait?
+            else:
+                sprint('Skipping killing lobby.')
+        else:
+            sprint('Lobby is not running.')
+        sprintPad()
+        sprint(f'{dryRunPrefix}Killing game server...')
+        if getGameServerIsRunning():
+            didIt = False
+            if not dryRun:
+                killExitCode = killGameServer()
+                if killExitCode:
+                    printError(f'killing server returned exit code: {killExitCode}')
+                else:
+                    didIt = True
+            if didIt:
+                sprint(f'{dryRunPrefix}Server process terminated.')
+            # TODO: need to wait?
+        else:
+            sprint('Server is not running.')
         sprintPad()
 
     if False:
@@ -1720,7 +1767,7 @@ def runCommand(**kwargs):
                     skipInstall = True
                 else:
                     if debug and fullFilename.lower() != pakchunkRefname.lower():
-                        print(f'Resolved reserved pakchunk reference from "{pakchunkRefname}" to "{fullFilename}"')
+                        sprint(f'Resolved reserved pakchunk reference from "{pakchunkRefname}" to "{fullFilename}"')
                     reservedPakchunksFilenameLower.append(fullFilename.lower())
 
             if gameDir and gameName:
@@ -1960,7 +2007,11 @@ def runCommand(**kwargs):
 
             if shouldProceed:
                 try:
-                    exitCode = openGameLauncher(getPathInfo(gameDir)['best'], startGame=launcherStartsGame, fromMenu=fromMenu)
+                    launcherExitCode = openGameLauncher(getPathInfo(gameDir)['best'], startGame=launcherStartsGame, fromMenu=fromMenu)
+                    if launcherExitCode:
+                        message = f'launcher returned exit code: {launcherExitCode}'
+                        printError(message)
+
                     setConsoleTitle(ConsoleTitle)
                     # TODO: remove
                     if False:

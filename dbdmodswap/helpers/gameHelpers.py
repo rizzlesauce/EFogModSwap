@@ -1,30 +1,19 @@
 import os
 import shutil
 
+from dbdmodswap.helpers.windowsHelpers import getCheckTaskRunningCommand
 from dbdmodswap.metadata.programMetaData import ProgramName
 
 from .pathHelpers import normPath
 from .tempFileHelpers import openTemporaryFile
-from .windowsHelpers import checkTaskRunning, killTask
+from .windowsHelpers import checkTaskRunning, getIsRunningAsAdmin, killTask
 
 DefaultLauncherRelPath = '4.4.2 Launcher.bat'
 DefaultGameName = 'DeadByDaylight'
 DefaultGameBinariesRelDir = os.path.join(DefaultGameName, 'Binaries', 'Win64')
-DefaultGameProgramName = f'{DefaultGameName}-Win64-Shipping.exe'
 DefaultGameServerProgramName = 'Server.exe'
-
-def getCheckTaskRunningCommand(programName):
-    charLimitForFind = 25
-    nameForFind = programName if len(programName) <= charLimitForFind else programName[:charLimitForFind]
-    return f'tasklist /fi "imagename eq {programName}" 2>nul | find /i /n "{nameForFind}" >nul'
-
-
-def checkTaskRunning(programName):
-    return os.system(getCheckTaskRunningCommand(programName)) == 0
-
-
-def killTask(programName):
-    return os.system(f'taskkill /f /t /im "{programName}"')
+DefaultGameProgramName = f'{DefaultGameName}-Win64-Shipping.exe'
+DefaultGameLobbyProgramName = 'steam_lobby.exe'
 
 
 def getGamePaksDir(gameDir, gameName):
@@ -53,20 +42,27 @@ def getGameServerIsRunning():
     return checkTaskRunning(DefaultGameServerProgramName)
 
 
+def getGameLobbyIsRunning():
+    return checkTaskRunning(DefaultGameLobbyProgramName)
+
+
 def getGameIsRunning():
     return checkTaskRunning(DefaultGameProgramName)
 
 
-def killGame(killServer=False):
-    # TODO: also be able to kill lobby?
-    targets = [DefaultGameProgramName]
-    if killServer:
-        targets.append(DefaultGameServerProgramName)
-
-    return [killTask(programName) for programName in targets]
+def killGameServer():
+    return killTask(DefaultGameServerProgramName)
 
 
-def getLauncherBatchFileContent(usingStandaloneExitOption=None, usingOriginalBehavior=False):
+def killGameLobby():
+    return killTask(DefaultGameLobbyProgramName, asAdmin=not getIsRunningAsAdmin())
+
+
+def killGame():
+    return killTask(DefaultGameProgramName)
+
+
+def getLauncherBatchFileContent(usingStandaloneExitOption=None, usingOriginalBehavior=False, isAdmin=False):
     cols, rows = shutil.get_terminal_size()
 
     if usingStandaloneExitOption is None:
@@ -149,7 +145,28 @@ def getLauncherBatchFileContent(usingStandaloneExitOption=None, usingOriginalBeh
 
         return formatLines(lines, indent)
 
-    return (
+    def confirmToUac(indent=0):
+        if isAdmin:
+            return ''
+
+        lines = [
+            'echo (UAC prompt may open)',
+        ]
+        return formatLines(lines, indent)
+
+    def runStart(program, params=None, title='', indent=0, asAdmin=False, cwd=f'%cd%'):
+        cmd = f'start "{title}" "{program}"'
+        if params:
+            cmd += ' ' + ' '.join(f'"{p}"' for p in params)
+
+        cmdEscaped = cmd.replace('"', '\\"')
+        runAsPart = ' -Verb RunAs' if asAdmin else ''
+        # TODO: remove if not needed
+        minPart = 'start "" /min ' if True else ''
+        powershellCmd = f'{minPart}powershell -WindowStyle Hidden -Command "Start-Process cmd.exe -ArgumentList \'/c\', \'cd /d \"{cwd}\" && {cmdEscaped}\'{runAsPart}"'
+        return formatLines([powershellCmd])
+
+    result = (
 f'''@echo off
 setlocal enabledelayedexpansion
 title 4.4.2 Launcher - By Smirkzyy and Merky and Ross
@@ -186,7 +203,7 @@ echo.
 echo [4] Open Paks Folder
 echo [5] Open Win64 Folder
 echo [6] Open Config Folder
-echo [7] {"Exit" if usingStandaloneExitOption else f"Exit (back to {ProgramName})"}
+echo [7] {"Exit" if usingOriginalBehavior else "Quit" if usingStandaloneExitOption else f"Back to {ProgramName}"}
 echo.
 set /p op="Selection: "
 {actionIf("goto :launch", ['1', 'launch', 'launc', 'laun', 'lau', 'la', 'l', 'lnch', 'ln', 'lnc'])}
@@ -197,10 +214,10 @@ set /p op="Selection: "
 {actionIf("goto :openConfig", ['6', 'openConfig', 'open config', 'config', 'conf'])}
 {actionIf("exit", ['7',
     *[
-        *(['x', 'ex', 'xi', 'exi', 'exit'] if usingStandaloneExitOption or True else []),
-        *(['q', 'quit', 'qu', 'qui'] if not usingStandaloneExitOption or True else []),
+        *(['x', 'ex', 'xi', 'exi', 'exit'] if usingStandaloneExitOption else []),
+        *(['q', 'quit', 'qu', 'qui'] if usingStandaloneExitOption or True else []),
         *(['b', 'ba', 'bak', 'bac', 'back', 'bk'] if not usingStandaloneExitOption else []),
-        *(['ret', 'return'] if not usingStandaloneExitOption or True else []),
+        *(['ret', 'return'] if not usingStandaloneExitOption else []),
     ],
 ])}
 echo.
@@ -221,7 +238,7 @@ if "%errorlevel%"=="0" (
 )
 
 echo Starting server...
-start "Server" "Server.exe"
+{runStart(DefaultGameServerProgramName, title='Server')}
 timeout /t 3 /nobreak >nul
 goto :launchdbd
 
@@ -238,7 +255,7 @@ if "%errorlevel%"=="0" (
 )
 
 echo Launching Dead by Daylight...
-start "Game" "DeadByDaylight-Win64-Shipping.exe" -DX12
+{runStart(DefaultGameProgramName, ['-DX12'], title='Game')}
 {pause(wait=True)}
 goto :main
 
@@ -255,8 +272,8 @@ if "%errorlevel%"=="0" (
 )
 
 echo Starting 4.4.2 lobby...
-echo (UAC prompt may open)
-start "Lobby" "steam_lobby.exe"
+{confirmToUac()}
+{runStart(DefaultGameLobbyProgramName, title='Lobby', asAdmin=True)}
 {pause(wait=True)}
 goto :main
 
@@ -265,7 +282,7 @@ goto :main
 {clearScreen(soft=True)}
 echo Opening Paks folder...
 set "paksPath=%~dp0DeadByDaylight\Content\Paks"
-start "" "%paksPath%"
+{runStart(f'%paksPath%')}
 {pause(wait=True)}
 goto :main
 
@@ -274,7 +291,7 @@ goto :main
 {clearScreen(soft=True)}
 echo Opening Win64 folder...
 set "win64path=%~dp0DeadByDaylight\Binaries\Win64"
-start "" "%win64path%"
+{runStart(f'%win64path%')}
 {pause(wait=True)}
 goto :main
 
@@ -286,7 +303,7 @@ set "configPath=%localappdata%\DeadByDaylight\Saved\Config\WindowsNoEditor"
 IF EXIST "%configPath%" (
 {clearScreen(soft=True, indent=1)}
     echo Opening Config folder...
-    start "" "%configPath%"
+{runStart(f'%configPath%', indent=1)}
 {pause(wait=True, indent=1)}
 ) else (
     echo.
@@ -367,8 +384,8 @@ if "%errorlevel%"=="0" (
 )
 
 echo Creating custom lobby...
-echo (UAC prompt may open)
-start "Lobby" "steam_lobby.exe" %setSurv%
+{confirmToUac()}
+{runStart(DefaultGameLobbyProgramName, [f'%setSurv%'], title='Lobby', asAdmin=True)}
 {pause(wait=True)}
 goto :customLobby
 
@@ -417,8 +434,8 @@ if "%errorlevel%"=="0" (
 )
 
 echo Joining custom lobby...
-echo (UAC prompt may open)
-start "Lobby" "steam_lobby.exe" %steamLink%
+{confirmToUac()}
+{runStart(DefaultGameLobbyProgramName, [f'%steamLink%'], title='Lobby', asAdmin=True)}
 {pause(wait=True)}
 goto :customLobby
 
@@ -426,7 +443,9 @@ goto :customLobby
 :steamPrivacySettings
 {clearScreen(soft=True)}
 echo Opening Steam privacy settings in default browser...
-start "" https://www.steamcommunity.com/id/eroticgaben/edit/settings
+{runStart('https://www.steamcommunity.com/id/eroticgaben/edit/settings')}
 {pause(wait=True)}
 goto :killer'''
     )
+
+    return result

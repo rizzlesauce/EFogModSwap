@@ -1,6 +1,36 @@
 import os
 import webbrowser
 import winreg
+import ctypes
+
+
+def getIsRunningAsAdmin():
+    return ctypes.windll.shell32.IsUserAnAdmin() == 1
+
+
+def runAsAdmin(cmd, params, cwd=None):
+    """
+    Run a command as an administrator.
+
+    Parameters:
+        cmd (str): The command to execute.
+        params (str): Parameters for the command.
+        cwd (str, optional): The working directory. Defaults to the current directory.
+    """
+    if cwd is None:
+        cwd = os.getcwd()
+
+    # Prepare the arguments for ShellExecuteW
+    operation = 'runas'  # Indicates we want to run as admin
+    lpFile = cmd
+    lpParameters = params
+    lpDirectory = cwd
+    nShowCmd = 1  # 1 = SW_SHOWNORMAL
+
+    # Execute the command
+    ret = ctypes.windll.shell32.ShellExecuteW(None, operation, lpFile, lpParameters, lpDirectory, nShowCmd)
+
+    return ret
 
 
 def setConsoleTitle(title):
@@ -31,8 +61,17 @@ def checkTaskRunning(programName):
     return os.system(f'tasklist /fi "imagename eq {programName}" 2>nul | find /i /n "{nameForFind}" >nul') == 0
 
 
-def killTask(programName):
-    return os.system(f'taskkill /f /t /im "{programName}"')
+def killTask(programName, asAdmin=False):
+    cmd = 'taskkill'
+    params = f'/f /t /im "{programName}"'
+    if asAdmin:
+        code = runAsAdmin(cmd, params)
+        if code > 32:
+            # translate this to the success exit code
+            code = 0
+        return code
+
+    return os.system(f'{cmd} {params}')
 
 
 def pressAnyKeyToContinue():
@@ -77,3 +116,12 @@ def openFile(filePath):
                     print(e3)
 
     return success
+
+
+def getCheckTaskRunningCommand(programName):
+    charLimitForFind = 25
+    nameForFind = programName if len(programName) <= charLimitForFind else programName[:charLimitForFind]
+    return f'tasklist /fi "imagename eq {programName}" 2>nul | find /i /n "{nameForFind}" >nul'
+
+def checkTaskRunning(programName):
+    return os.system(getCheckTaskRunningCommand(programName)) == 0

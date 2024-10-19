@@ -162,7 +162,6 @@ def confirm(action, emptyMeansNo=None, pad=False, prefix=None):
         if result.upper() == 'N' or (not result and emptyMeansNo is True):
             confirmed = False
             break
-
     if pad:
         sprintPad()
 
