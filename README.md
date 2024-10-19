@@ -45,12 +45,7 @@ of cooked assets and lists of installed and stored pakchunks).
 ### Setting auto launch
 
 By default, when you enter the launcher menu, the game will start automatically. To prevent this,
-run `DbdModSwap.exe --no-autoLaunch`. If you want to re-enable this behavior, run
-`DbdModSwap.exe --autoLaunch`. Alternatively, you can change this setting by editing the menu
-settings file `.menu_settings.yaml` and adding or removing this line:
-```yaml
-launcherStartsGame: false
-```
+go to the submenu `MoreOptions` and toggle the `autoLaunch` flag.
 
 ## Mod configurations
 
