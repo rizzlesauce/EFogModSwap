@@ -27,8 +27,12 @@ from dbdmodswap.helpers.customizationItemDbHelpers import (
     getModelDisplayNameProperty, getModelIdProperty, getModelName,
     getSocketAttachments, getUiDataValues, md5Hash, setModelName, sha256Hash)
 from dbdmodswap.helpers.fileHelpers import listFilesRecursively
-from dbdmodswap.helpers.gameHelpers import (getGameIsRunning, getGameLobbyIsRunning, getGamePaksDir, getGameServerIsRunning,
-                                            killGame, killGameLobby, killGameServer, openGameLauncher)
+from dbdmodswap.helpers.gameHelpers import (getGameIsRunning,
+                                            getGameLobbyIsRunning,
+                                            getGamePaksDir,
+                                            getGameServerIsRunning, killGame,
+                                            killGameLobby, killGameServer,
+                                            openGameLauncher)
 from dbdmodswap.helpers.jsonHelpers import jsonDump, jsonifyDataRecursive
 from dbdmodswap.helpers.pakHelpers import (DefaultPlatform,
                                            PakchunkFilenameSuffix,
@@ -53,7 +57,8 @@ from dbdmodswap.helpers.uassetHelpers import (ItemTypeName, NameFieldName,
                                               setPropertyValue, uassetToJson)
 from dbdmodswap.helpers.unrealEngineHelpers import (
     UnrealEngineCookedSplitFileExtensions, getUnrealProjectCookedContentDir)
-from dbdmodswap.helpers.windowsHelpers import getIsRunningAsAdmin, openFolder, setConsoleTitle
+from dbdmodswap.helpers.windowsHelpers import (getIsRunningAsAdmin, openFolder,
+                                               setConsoleTitle)
 from dbdmodswap.helpers.yamlHelpers import yamlDump
 from dbdmodswap.metadata.programMetaData import ConsoleTitle
 

@@ -1,12 +1,15 @@
 import os
 import shutil
+from re import sub
 
 from dbdmodswap.helpers.windowsHelpers import getCheckTaskRunningCommand
 from dbdmodswap.metadata.programMetaData import ProgramName
 
 from .pathHelpers import normPath
 from .tempFileHelpers import openTemporaryFile
-from .windowsHelpers import checkTaskRunning, getIsRunningAsAdmin, killTask
+from .windowsHelpers import (checkTaskRunning, getIsRunningAsAdmin,
+                             getPowershellCommand, getStartCommand,
+                             getTaskKillCommand, taskKill)
 
 DefaultLauncherRelPath = '4.4.2 Launcher.bat'
 DefaultGameName = 'DeadByDaylight'
@@ -18,24 +21,6 @@ DefaultGameLobbyProgramName = 'steam_lobby.exe'
 
 def getGamePaksDir(gameDir, gameName):
     return normPath(os.path.join(gameDir, gameName, 'Content', 'Paks'))
-
-
-def openGameLauncher(gameDir, startGame=False, usingExternalLauncher=False, fromMenu=False):
-    def runLauncherBatchScript(launcherPath):
-        assert launcherPath
-        return os.system(f'cd "{gameDir}" && "{launcherPath}"{" launch" if startGame else ""}')
-
-    if usingExternalLauncher:
-        return runLauncherBatchScript(os.path.join(gameDir, DefaultLauncherRelPath))
-
-    with openTemporaryFile(dir=gameDir, prefix=f'{ProgramName}_Launcher_', suffix='.bat', mode='w') as file:
-        # TODO: remove
-        if False:
-            print(getLauncherBatchFileContent())
-        else:
-            file.write(getLauncherBatchFileContent(usingStandaloneExitOption=not fromMenu or None))
-            file.close()
-            return runLauncherBatchScript(file.name)
 
 
 def getGameServerIsRunning():
@@ -51,15 +36,15 @@ def getGameIsRunning():
 
 
 def killGameServer():
-    return killTask(DefaultGameServerProgramName)
+    return taskKill(DefaultGameServerProgramName)
 
 
 def killGameLobby():
-    return killTask(DefaultGameLobbyProgramName, asAdmin=not getIsRunningAsAdmin())
+    return taskKill(DefaultGameLobbyProgramName, asAdmin=not getIsRunningAsAdmin())
 
 
 def killGame():
-    return killTask(DefaultGameProgramName)
+    return taskKill(DefaultGameProgramName)
 
 
 def getLauncherBatchFileContent(usingStandaloneExitOption=None, usingOriginalBehavior=False, isAdmin=False):
@@ -72,8 +57,12 @@ def getLauncherBatchFileContent(usingStandaloneExitOption=None, usingOriginalBeh
     usingOriginalPause = usingOriginalBehavior
     usingPageClearCls = False
 
-    def formatLines(lines, indent=0):
-        return '\n'.join([f"{'    ' * indent}{line}" for line in lines if line])
+    def formatLines(lines, indent=0, keepEmpty=False, linesOnly=False):
+        indentedLines = [f"{'    ' * indent}{line}" for line in lines if line or keepEmpty]
+        if linesOnly:
+            return indentedLines
+
+        return ('\n' if True else os.linesep).join(indentedLines)
 
     def clearScreen(indent=0, soft=False, active=True, long=False, linesOnly=False):
         clsPart = 'cls'
@@ -105,19 +94,17 @@ def getLauncherBatchFileContent(usingStandaloneExitOption=None, usingOriginalBeh
             lines = [f'REM {line}' for line in lines]
 
         lines.append(clsPart)
+        return formatLines(lines, indent, linesOnly=linesOnly)
 
-        if linesOnly:
-            return lines
+    def doWait():
+        return 'timeout /t 3 /nobreak >nul'
 
-        return formatLines(lines, indent)
-
-
-    def pause(indent=0, wait=False, invalidInput=False, active=True, linesOnly=False):
-        waitPart = 'timeout /t 3 /nobreak >nul' if wait else ''
+    def pause(indent=0, wait=False, invalidInput=False, active=True, linesOnly=False, startingLobby=False):
+        waitPart = doWait() if wait else ''
         pausePart = 'pause'
         pausing = True
 
-        if waitPart and not usingOriginalPause:
+        if waitPart and not usingOriginalPause and (not startingLobby or True):
             waitPart = f'REM {waitPart}'
 
         if pausePart and (not active or (not usingOriginalPause and not invalidInput)):
@@ -129,11 +116,7 @@ def getLauncherBatchFileContent(usingStandaloneExitOption=None, usingOriginalBeh
             *((['echo.'] if True else clearScreen(soft=True, linesOnly=True)) if pausing else []),
             pausePart,
         ]
-
-        if linesOnly:
-            return lines
-
-        return formatLines(lines, indent)
+        return formatLines(lines, indent, linesOnly=linesOnly)
 
     def actionIf(action, inputMatches, indent=0):
         lines = []
@@ -142,35 +125,75 @@ def getLauncherBatchFileContent(usingStandaloneExitOption=None, usingOriginalBeh
             if usingOriginalBehavior:
                 # use only the first item (the menu number)
                 break
-
         return formatLines(lines, indent)
 
-    def confirmToUac(indent=0):
+    def confirmToUac(indent=0, linesOnly=False, forceConfirm=False):
         if isAdmin:
             return ''
-
         lines = [
-            'echo (UAC prompt may open)',
+            #'echo.', # TODO: remove
+            'echo UAC window will open.',
         ]
-        return formatLines(lines, indent)
+        if forceConfirm:
+            lines = [
+                *lines,
+                #'echo.', # TODO: remove
+                'pause',
+            ]
+        return formatLines(lines, indent, linesOnly=linesOnly)
 
-    def runStart(program, params=None, title='', indent=0, asAdmin=False, cwd=f'%cd%'):
-        cmd = f'start "{title}" "{program}"'
-        if params:
-            cmd += ' ' + ' '.join(f'"{p}"' for p in params)
+    def start(programOrPath, params=None, title='', indent=0, asAdmin=False, cwd=f'%cd%', wait=False, isProgram=False):
+        return formatLines([getStartCommand(programOrPath, params, title, asAdmin, cwd, wait, isProgram=isProgram)], indent)
 
-        cmdEscaped = cmd.replace('"', '\\"')
-        runAsPart = ' -Verb RunAs' if asAdmin else ''
-        # TODO: remove if not needed
-        minPart = 'start "" /min ' if True else ''
-        powershellCmd = f'{minPart}powershell -WindowStyle Hidden -Command "Start-Process cmd.exe -ArgumentList \'/c\', \'cd /d \"{cwd}\" && {cmdEscaped}\'{runAsPart}"'
-        return formatLines([powershellCmd])
+    def stopLobbyIfRunning(indent=0, failGoto='main', linesOnly=False):
+        lines = [
+            f'echo Checking lobby status...',
+            getCheckTaskRunningCommand(DefaultGameLobbyProgramName),
+            f'if "%errorlevel%"=="0" (',
+            f'    echo Lobby already running.',
+            f'    echo.',
+            f'    echo Terminating prior lobby process...',
+            *confirmToUac(indent=1, linesOnly=True, forceConfirm=True),
+            f'    {getTaskKillCommand(DefaultGameLobbyProgramName, asAdmin=True)}',
+            f'    set "err=!errorlevel!"',
+            #f'    echo !err!', # TODO: remove
+            f'    if !err! GTR 0 (',
+            f'        echo.',
+            f'        echo Failed to terminate prior lobby.',
+            f'        pause',
+            f'        goto :{failGoto}',
+            f'    )',
+            f'    echo Prior lobby process terminated.',
+            f')',
+            #f'echo Not running yet.', # TODO: remove
+            f'echo.',
+        ]
+        return formatLines(lines, indent, keepEmpty=True, linesOnly=linesOnly)
+
+    def startGameLobby(message, params=None, failGoto='main', indent=0, subTitle=''):
+        lines = [
+            *stopLobbyIfRunning(failGoto=failGoto, linesOnly=True),
+            f'echo {message}',
+            *confirmToUac(linesOnly=True),
+            getPowershellCommand(f'%cd%\{DefaultGameLobbyProgramName}', params, asAdmin=True, wait=False, isProgram=True, title=f'Lobby{f" - {subTitle}" if subTitle else ""}'),
+            #getStartCommand(DefaultGameLobbyProgramName, params, title='Lobby', asAdmin=True), # TODO: remove
+            f'set "startGameLobbyErr=!errorlevel!"',
+            f'if !startGameLobbyErr! GTR 0 (',
+            f'    echo.',
+            f'    echo Failed to start lobby.',
+            f'    pause',
+            f'    goto :{failGoto}',
+            f')',
+            *pause(wait=True, startingLobby=True, linesOnly=True),
+            f'echo Lobby started.',
+        ]
+        return formatLines(lines, indent, keepEmpty=True)
 
     result = (
 f'''@echo off
 setlocal enabledelayedexpansion
 title 4.4.2 Launcher - By Smirkzyy and Merky and Ross
-cd /d "{DefaultGameBinariesRelDir}\\"
+cd /d "{DefaultGameBinariesRelDir}{os.path.sep * 2}"
 set "originalDir=%cd%"
 set prevContent=0
 set launchNow=0
@@ -238,8 +261,8 @@ if "%errorlevel%"=="0" (
 )
 
 echo Starting server...
-{runStart(DefaultGameServerProgramName, title='Server')}
-timeout /t 3 /nobreak >nul
+{start(DefaultGameServerProgramName, title='Server', isProgram=True)}
+{doWait()}
 goto :launchdbd
 
 
@@ -255,26 +278,14 @@ if "%errorlevel%"=="0" (
 )
 
 echo Launching Dead by Daylight...
-{runStart(DefaultGameProgramName, ['-DX12'], title='Game')}
+{start(DefaultGameProgramName, ['-DX12'], title='Game', isProgram=True)}
 {pause(wait=True)}
 goto :main
 
 
 :join
 {clearScreen(soft=True)}
-echo Checking lobby status...
-{getCheckTaskRunningCommand("steam_lobby.exe")}
-
-if "%errorlevel%"=="0" (
-    echo Already running.
-{pause(invalidInput=True, indent=1)}
-    goto :main
-)
-
-echo Starting 4.4.2 lobby...
-{confirmToUac()}
-{runStart(DefaultGameLobbyProgramName, title='Lobby', asAdmin=True)}
-{pause(wait=True)}
+{startGameLobby('Starting 4.4.2 lobby...', subTitle='Public', failGoto='main')}
 goto :main
 
 
@@ -282,7 +293,7 @@ goto :main
 {clearScreen(soft=True)}
 echo Opening Paks folder...
 set "paksPath=%~dp0DeadByDaylight\Content\Paks"
-{runStart(f'%paksPath%')}
+{start(f'%paksPath%')}
 {pause(wait=True)}
 goto :main
 
@@ -291,7 +302,7 @@ goto :main
 {clearScreen(soft=True)}
 echo Opening Win64 folder...
 set "win64path=%~dp0DeadByDaylight\Binaries\Win64"
-{runStart(f'%win64path%')}
+{start(f'%win64path%')}
 {pause(wait=True)}
 goto :main
 
@@ -303,7 +314,7 @@ set "configPath=%localappdata%\DeadByDaylight\Saved\Config\WindowsNoEditor"
 IF EXIST "%configPath%" (
 {clearScreen(soft=True, indent=1)}
     echo Opening Config folder...
-{runStart(f'%configPath%', indent=1)}
+{start(f'%configPath%', indent=1)}
 {pause(wait=True, indent=1)}
 ) else (
     echo.
@@ -374,19 +385,7 @@ if "!validNumber!" gtr "4" (
 )
 
 {clearScreen(active=False)}
-echo Checking lobby status...
-{getCheckTaskRunningCommand("steam_lobby.exe")}
-
-if "%errorlevel%"=="0" (
-    echo Already running.
-{pause(invalidInput=True, indent=1)}
-    goto :killer2
-)
-
-echo Creating custom lobby...
-{confirmToUac()}
-{runStart(DefaultGameLobbyProgramName, [f'%setSurv%'], title='Lobby', asAdmin=True)}
-{pause(wait=True)}
+{startGameLobby('Creating custom lobby...', [f'%setSurv%'], subTitle='Custom', failGoto='killer2')}
 goto :customLobby
 
 
@@ -410,12 +409,12 @@ goto :survivor
 
 :GrabSteamURL
 {clearScreen(active=False)}
+{stopLobbyIfRunning(failGoto='GrabSteamURL')}
 cd /d GrabSteamURL/bin/
-java -cp "GrabSteamURL4Launcher.jar;jsoup-1.17.1.jar" GrabSteamURL2 "%~dp0DeadByDaylight\\Binaries\\Win64\\steam_lobby.exe"
+java -cp "GrabSteamURL4Launcher.jar;jsoup-1.17.1.jar" GrabSteamURL2 "%~dp0{DefaultGameBinariesRelDir.replace(os.path.sep, f'{os.path.sep}{os.path.sep}')}{os.path.sep}{os.path.sep}{DefaultGameLobbyProgramName}"
 cd /d "%originalDir%"
 {pause(wait=True)}
 goto :customLobby
-
 
 :DirectConnect
 {clearScreen()}
@@ -424,28 +423,34 @@ echo.
 set /p steamLink="Paste link here: "
 if %steamLink%==return goto :survivor
 {clearScreen(soft=True)}
-echo Checking lobby status...
-{getCheckTaskRunningCommand("steam_lobby.exe")}
-
-if "%errorlevel%"=="0" (
-    echo Already running.
-{pause(invalidInput=True, indent=1)}
-    goto :DirectConnect
-)
-
-echo Joining custom lobby...
-{confirmToUac()}
-{runStart(DefaultGameLobbyProgramName, [f'%steamLink%'], title='Lobby', asAdmin=True)}
-{pause(wait=True)}
+{startGameLobby('Joining custom lobby...', [f'%steamLink%'], subTitle='DirectConnect', failGoto='DirectConnect')}
 goto :customLobby
 
 
 :steamPrivacySettings
 {clearScreen(soft=True)}
 echo Opening Steam privacy settings in default browser...
-{runStart('https://www.steamcommunity.com/id/eroticgaben/edit/settings')}
+{start('https://www.steamcommunity.com/id/eroticgaben/edit/settings')}
 {pause(wait=True)}
 goto :killer'''
     )
 
     return result
+
+
+def openGameLauncher(gameDir, startGame=False, usingExternalLauncher=False, fromMenu=False):
+    def runLauncherBatchScript(launcherPath):
+        assert launcherPath
+        return os.system(f'cd "{gameDir}" && "{launcherPath}"{" launch" if startGame else ""}')
+
+    if usingExternalLauncher:
+        return runLauncherBatchScript(os.path.join(gameDir, DefaultLauncherRelPath))
+
+    with openTemporaryFile(dir=gameDir, prefix=f'{ProgramName}_Launcher_', suffix='.bat', mode='w') as file:
+        # TODO: remove
+        if False:
+            print(getLauncherBatchFileContent())
+        else:
+            file.write(getLauncherBatchFileContent(usingStandaloneExitOption=not fromMenu or None))
+            file.close()
+            return runLauncherBatchScript(file.name)

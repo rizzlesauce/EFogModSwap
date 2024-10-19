@@ -11,8 +11,8 @@ from dbdmodswap.helpers.gameHelpers import (getGameIsRunning,
 from dbdmodswap.helpers.pathHelpers import getPathInfo
 from dbdmodswap.helpers.settingsHelpers import (DefaultSettingsPath,
                                                 findSettingsFiles,
+                                                getEnabledDisabledStr,
                                                 getResultsFilePath)
-from dbdmodswap.helpers.settingsHelpers import getEnabledDisabledStr
 from dbdmodswap.helpers.windowsHelpers import openFile, openFolder
 from dbdmodswap.helpers.yamlHelpers import yamlDump
 from dbdmodswap.metadata.programMetaData import ProgramName, Version

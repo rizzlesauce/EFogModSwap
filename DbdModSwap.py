@@ -97,7 +97,7 @@ run `ActiveModConfig`, `Install`, and `Launch` to start the game with your mod c
     )
     parser.add_argument(
         '--kill',
-        help="end the game process if it's running",
+        help='end game processes if they are running',
         action='store_true',
     )
     parser.add_argument(
