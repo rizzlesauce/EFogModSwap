@@ -32,7 +32,7 @@ will match it if it isn't amgiguous.
 
 For starters, you'll want to configure the path to your game with the setting called `gameDir`. This
 path is used for installing mods and launching the game. Then, you can run `List` and the tool will
-output information regarding the mods you alraedy have installed.
+output information regarding the mods you already have installed.
 
 The tool has several use cases. Generally, it works by configuring the settings for each use case
 and then running the associated menu actions to apply the changes.
