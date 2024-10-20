@@ -535,6 +535,7 @@ def runCommand(**kwargs):
         if destPakAssets is None:
             if inspecting:
                 printWarning('Missing `destPakAssets`')
+            destPakAssets = []
         elif not destPakAssets:
             if inspecting or paking:
                 printWarning('Empty `destPakAssets`')
