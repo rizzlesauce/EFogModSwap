@@ -38,7 +38,7 @@ game folder by selecting `MoreOptions`, `GameDir` and choosing the game folder f
 the file browser that opens. Then, select `List` from the menu to create a settings
 file with helpful inline documentation. Select `Edit` from the menu to edit the
 settings file, configuring `modGroups` and `modConfigs`. Finally, run `ActiveModConfig`,
-`Install`, and `Launcher` to start the game with your target mod configuration.
+`Install`, and `Launcher` to start the game with your selected mod configuration.
 '''.format(
             ProgramName=ProgramName,
             CustomizationItemDbResourceName=CustomizationItemDbAssetName,
