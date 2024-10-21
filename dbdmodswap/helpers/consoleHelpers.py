@@ -154,7 +154,7 @@ def confirm(action, emptyMeansNo=None, pad=False, prefix=None):
     if pad:
         sprintPad()
     while True:
-        result = sprintput(f'{prefix or ""}{action[0].upper()}{action[1:]} (Y/n)? ').strip()
+        result = sprintput(f'{prefix or ""}{action[0].upper()}{action[1:]} ({"Y" if emptyMeansNo is False else "y"}/{"N" if emptyMeansNo else "n"})? ').strip()
         if result.upper() == 'Y':
             confirmed = True
             break
@@ -168,5 +168,5 @@ def confirm(action, emptyMeansNo=None, pad=False, prefix=None):
     return confirmed
 
 
-def confirmOverwrite(target, pad=True, prefix=None):
-    return confirm(f'overwrite "{target}"', pad=pad, prefix=prefix)
+def confirmOverwrite(target, pad=True, prefix=None, emptyMeansNo=None):
+    return confirm(f'overwrite "{target}"', emptyMeansNo=emptyMeansNo, pad=pad, prefix=prefix)

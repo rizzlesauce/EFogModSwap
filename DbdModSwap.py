@@ -9,9 +9,14 @@ import sys
 from dbdmodswap.helpers.consoleHelpers import sprint, sprintPad
 from dbdmodswap.helpers.customizationItemDbHelpers import \
     CustomizationItemDbAssetName
+from dbdmodswap.helpers.pakHelpers import UnrealPakProgramFilename
 from dbdmodswap.helpers.pathHelpers import getPathInfo
-from dbdmodswap.helpers.settingsHelpers import DefaultSettingsPath, getEnabledDisabledStr
-from dbdmodswap.helpers.uassetHelpers import UassetGuiProgramStem
+from dbdmodswap.helpers.settingsHelpers import (DefaultAttachmentsDir,
+                                                DefaultPakingDir,
+                                                DefaultSettingsPath,
+                                                getEnabledDisabledStr)
+from dbdmodswap.helpers.uassetHelpers import (UassetGuiProgramFilename,
+                                              UassetGuiProgramStem)
 from dbdmodswap.helpers.windowsHelpers import setConsoleTitle
 from dbdmodswap.metadata.programMetaData import (ConsoleTitle, ProgramName,
                                                  Version)
@@ -28,11 +33,12 @@ if __name__ == '__main__':
         prog=ProgramName,
         description='''Swaps mods and character model accessories
 
-Running with no arguments opens the interactive menu. To get started, select `List`
-from the menu to create a settings file with helpful inline documentation. Then, choose
-`Edit` from the menu to edit the settings file. In the settings file, set `gameDir` to
-your game folder, and configure `modGroups` and `modConfigs` as desired. Finally,
-run `ActiveModConfig`, `Install`, and `Launch` to start the game with your mod config.
+Running with no arguments opens the interactive menu. To get started, configure the
+game folder by selecting `MoreOptions`, `GameDir` and choosing the game folder from
+the file browser that opens. Then, select `List` from the menu to create a settings
+file with helpful inline documentation. Select `Edit` from the menu to edit the
+settings file, configuring `modGroups` and `modConfigs`. Finally, run `ActiveModConfig`,
+`Install`, and `Launch` to start the game with your target mod configuration.
 '''.format(
             ProgramName=ProgramName,
             CustomizationItemDbResourceName=CustomizationItemDbAssetName,
@@ -44,6 +50,36 @@ run `ActiveModConfig`, `Install`, and `Launch` to start the game with your mod c
         help=f'path to settings YAML file (default: `{getPathInfo(DefaultSettingsPath)["best"]}`)',
         type=str,
         nargs='?',
+    )
+    parser.add_argument(
+        '--gameDir',
+        help='game folder',
+        type=str,
+    )
+    parser.add_argument(
+        '--pakingDir',
+        help=f'pakchunks storage folder (default: `{getPathInfo(DefaultPakingDir)["best"]}`)',
+        type=str,
+    )
+    parser.add_argument(
+        '--attachmentsDir',
+        help=f'attachment definitions storage folder (default: `{getPathInfo(DefaultAttachmentsDir)["best"]}`)',
+        type=str,
+    )
+    parser.add_argument(
+        '--unrealProjectDir',
+        help='Unreal Engine project folder',
+        type=str,
+    )
+    parser.add_argument(
+        '--uassetGuiPath',
+        help=f'path to {UassetGuiProgramFilename}',
+        type=str,
+    )
+    parser.add_argument(
+        '--unrealPakPath',
+        help=f'path to {UnrealPakProgramFilename}',
+        type=str,
     )
     parser.add_argument(
         '--activeModConfig',
@@ -148,6 +184,10 @@ run `ActiveModConfig`, `Install`, and `Launch` to start the game with your mod c
     else:
         exitCode = runCommand(
             settingsFilePath=args.settingsFile,
+            gameDir=args.gameDir,
+            pakingDir=args.pakingDir,
+            attachmentsDir=args.attachmentsDir,
+            unrealProjectDir=args.unrealProjectDir,
             activeModConfigName=args.activeModConfig,
             inspecting=args.list,
             creatingAttachments=args.create,
@@ -160,6 +200,7 @@ run `ActiveModConfig`, `Install`, and `Launch` to start the game with your mod c
             launcherStartsGame=args.autoLaunch,
             killingGame=args.kill,
             uassetGuiPath=args.uassetGuiPath,
+            unrealPakPath=args.unrealPakPath,
             dryRun=args.dryRun,
             overwriteOverride=args.overwrite,
             debug=args.debug,

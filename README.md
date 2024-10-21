@@ -21,31 +21,39 @@ you want to call it).
 Run `DbdModSwap.exe` with no arguments (or double click on it from file explorer) to enter the
 interactive menu.
 
-Follow the instructions in the CLI start page to generate a settings file and begin configuring. The
-settings file comes with a lot of inline documentation to help explain each setting.
-
-The menu prompt allows you to chain multiple menu actions together by typing in multiple menu item
-names or numbers. When typing a menu item name, you can just type a unique part of the name and it
-will match it if it isn't amgiguous.
-
-### Configure game directory
-
-For starters, you'll want to configure the path to your game with the setting called `gameDir`. This
-path is used for installing mods and launching the game. Then, you can run `List` and the tool will
-output information regarding the mods you already have installed.
-
 The tool has several use cases. Generally, it works by configuring the settings for each use case
 and then running the associated menu actions to apply the changes.
 
-Running the `List` action can provide useful information regarding your mods, assets, attachments,
-etc. Not only can it help troubleshoot issues, it also generates an output file with data that
-you may want to conveniently copy back into your settings file for certain settings (such as lists
-of cooked assets and lists of installed and stored pakchunks).
+Running the `List` action at any time can provide useful information regarding your configuration.
+Not only can it generate a settings file and help troubleshoot issues, it also generates a results
+file with data that you may want to conveniently copy back into your settings file for certain settings
+(such as lists of installed and stored pakchunks and available cooked assets).
+
+### Configure game folder
+
+Configure the path to your game folder by selecting `MoreOptions`, `GameDir` and choosing the
+folder in the file browser that opens.
+
+### Configure paking folder
+
+Choose a folder where your pakchunks are stored that are not currently installed in the game,
+or use the default. To change this folder, select `MoreOptions`, `PakingDir`.
+
+### Generate settings file
+
+Then, run `List` to generate a settings file and get info on your current configuration. The
+settings file comes with inline documentation to describe each setting.
+
+### Chaining menu actions
+
+The menu prompt allows you to combine multiple menu actions together by typing in multiple menu item
+numbers or names. When typing a menu item name, you can just type part of the name and it
+will match it if it isn't amgiguous.
 
 ### Setting auto launch
 
-By default, when you enter the launcher menu, the game will start automatically. To prevent this,
-go to the submenu `MoreOptions` and toggle the `autoLaunch` flag.
+By default, when you enter the launcher menu, the game will automatically start. To prevent this,
+go to the submenu `MoreOptions` and toggle the `AutoLaunch` setting.
 
 ## Mod configurations
 

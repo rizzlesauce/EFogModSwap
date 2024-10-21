@@ -3,16 +3,23 @@ import platform
 
 import yaml
 
-from dbdmodswap.helpers.consoleHelpers import (esprint, promptToContinue,
-                                               sprint, sprintClear, sprintPad,
+from dbdmodswap.helpers.consoleHelpers import (confirm, esprint,
+                                               promptToContinue, sprint,
+                                               sprintClear, sprintPad,
                                                sprintput, sprintSeparator)
 from dbdmodswap.helpers.gameHelpers import (getGameIsRunning,
                                             getGameServerIsRunning)
+from dbdmodswap.helpers.guiHelpers import getDirectory, getFile
+from dbdmodswap.helpers.pakHelpers import UnrealPakProgramStem
 from dbdmodswap.helpers.pathHelpers import getPathInfo
-from dbdmodswap.helpers.settingsHelpers import (DefaultSettingsPath,
+from dbdmodswap.helpers.settingsHelpers import (DefaultAttachmentsDir,
+                                                DefaultPakingDir,
+                                                DefaultSettingsPath,
                                                 findSettingsFiles,
                                                 getEnabledDisabledStr,
-                                                getResultsFilePath)
+                                                getResultsFilePath,
+                                                isValidSettingsFilename)
+from dbdmodswap.helpers.uassetHelpers import UassetGuiProgramStem
 from dbdmodswap.helpers.windowsHelpers import openFile, openFolder
 from dbdmodswap.helpers.yamlHelpers import yamlDump
 from dbdmodswap.metadata.programMetaData import ProgramName, Version
@@ -125,7 +132,7 @@ def runMenu(args, parser):
             break
 
     sprintPad()
-    sprint('You can run one or more actions at a time by entering menu numbers or menu item names.')
+    sprint('You can run one or more actions at a time by entering menu item numbers or names.')
 
     exitCode = 0
 
@@ -136,6 +143,48 @@ def runMenu(args, parser):
     settingsFileExists = False
     settingsFileValid = False
     settings = {}
+
+    gameDir = (args.gameDir or '').strip() or menuSettings.get('gameDir', None)
+    if gameDir:
+        gameDir = getPathInfo(gameDir)['best']
+    if gameDir != menuSettings.get('gameDir', None):
+        menuSettings['gameDir'] = gameDir
+        menuSettingsDirty = True
+
+    pakingDir = (args.pakingDir or '').strip() or menuSettings.get('pakingDir', None) or DefaultPakingDir
+    if pakingDir:
+        pakingDir = getPathInfo(pakingDir)['best']
+    if pakingDir != menuSettings.get('pakingDir', None):
+        menuSettings['pakingDir'] = pakingDir
+        menuSettingsDirty = True
+
+    attachmentsDir = (args.attachmentsDir or '').strip() or menuSettings.get('attachmentsDir', None) or DefaultAttachmentsDir
+    if attachmentsDir:
+        attachmentsDir = getPathInfo(attachmentsDir)['best']
+    if attachmentsDir != menuSettings.get('attachmentsDir', None):
+        menuSettings['attachmentsDir'] = attachmentsDir
+        menuSettingsDirty = True
+
+    unrealProjectDir = (args.unrealProjectDir or '').strip() or menuSettings.get('unrealProjectDir', None)
+    if unrealProjectDir:
+        unrealProjectDir = getPathInfo(unrealProjectDir)['best']
+    if unrealProjectDir != menuSettings.get('unrealProjectDir', None):
+        menuSettings['unrealProjectDir'] = unrealProjectDir
+        menuSettingsDirty = True
+
+    uassetGuiPath = (args.uassetGuiPath or '').strip() or menuSettings.get('uassetGuiPath', None)
+    if uassetGuiPath:
+        uassetGuiPath = getPathInfo(uassetGuiPath)['best']
+    if uassetGuiPath != menuSettings.get('uassetGuiPath', None):
+        menuSettings['uassetGuiPath'] = uassetGuiPath
+        menuSettingsDirty = True
+
+    unrealPakPath = (args.unrealPakPath or '').strip() or menuSettings.get('unrealPakPath', None)
+    if unrealPakPath:
+        unrealPakPath = getPathInfo(unrealPakPath)['best']
+    if unrealPakPath != menuSettings.get('unrealPakPath', None):
+        menuSettings['unrealPakPath'] = unrealPakPath
+        menuSettingsDirty = True
 
     userSpecifiedModConfigName = (args.activeModConfig or '').strip() or menuSettings.get('activeModConfig', None)
     activeModConfigName = None
@@ -154,15 +203,66 @@ def runMenu(args, parser):
 
     getFlagValueStr = getEnabledDisabledStr
 
-    def getSettingsFileStr():
-        return f'"{settingsFilePath}"{((" (loaded)" if False else "") if settingsFileValid else " (invalid)") if settingsFileExists else " (new file)"}' if settingsFilePath else '<Not specified>'
+    def getValueStr(value):
+        return value or '<Not specified>'
+
+    def getFilePathStr(filePath, info=None, quote=None, shorten=None):
+        if quote is None:
+            quote = True
+        if shorten is None:
+            shorten = True
+        path = filePath
+        if path:
+            if shorten:
+                shortPath = os.path.basename(path)
+                if path != shortPath:
+                    path = f'.../{shortPath}'
+            if quote:
+                path = f'"{path}"'
+
+        return getValueStr(f'{path}{f" ({info})" if info else ""}' if path else None)
+
+    def getDirStr(dir, info=None, quote=None, shorten=None):
+        # TODO: remove
+        if quote is None and False:
+            quote = False
+        return getFilePathStr(dir, info, quote, shorten)
+
+    def getSettingsFileStr(shorten=None):
+        return getFilePathStr(settingsFilePath, (("loaded" if False else "") if settingsFileValid else "invalid") if settingsFileExists else "new file", shorten=shorten)
+
+    def getGameDirStr(shorten=None):
+        return getDirStr(gameDir, shorten=shorten)
+
+    def getPakingDirStr(shorten=None):
+        return getDirStr(pakingDir, shorten=shorten)
+
+    def getAttachmentsDirStr(shorten=None):
+        return getDirStr(attachmentsDir, shorten=shorten)
+
+    def getUnrealProjectDirStr(shorten=None):
+        return getDirStr(unrealProjectDir, shorten=shorten)
+
+    def getUassetGuiPathStr(shorten=None):
+        return getFilePathStr(uassetGuiPath, shorten=shorten)
+
+    def getUnrealPakPathStr(shorten=None):
+        return getFilePathStr(unrealPakPath, shorten=shorten)
 
     def getActiveModConfigStr():
         # TODO: report whether mod config is verified to be installed or not, and whether it matches `activeModConfig` settings
-        return f'"{activeModConfigName}"{("" if activeModConfigExists else " (missing)")}' if activeModConfigName else '<Not specified>'
+        return getValueStr(f'"{activeModConfigName}"{("" if activeModConfigExists else " (missing)")}' if activeModConfigName else None)
 
     def getOverwriteModeStr():
         return 'always' if overwriteOverride else 'never' if overwriteOverride is False else 'ask'
+
+    def handleFileChooserResult(currValue, name, result):
+        myResult = result
+        if not myResult and currValue:
+            if not confirm(f'clear path to {name}', prefix='Canceled. ', emptyMeansNo=True, pad=True):
+                myResult = currValue
+            sprintSeparator()
+        return myResult
 
     def modConfigExists(modConfigName):
         return modConfigName in settings.get('modConfigs', {})
@@ -217,8 +317,15 @@ def runMenu(args, parser):
             {
                 'name': 'moreOptions',
                 'items': [
-                    {'title': 'More Options'},
+                    {'title': 'Game'},
                     'autoLaunch',
+                    'gameDir',
+                    'pakingDir',
+                    {'title': 'Modding'},
+                    'uassetGuiPath',
+                    'unrealPakPath',
+                    'unrealProjectDir',
+                    'attachmentsDir',
                     'back',
                     {'name': 'quit', 'hidden': True},
                 ],
@@ -377,8 +484,20 @@ def runMenu(args, parser):
                         help = f"switch overwrite mode ({action['action'].help})"
                     else:
                         help = 'overwrite existing files'
+                elif actionName == 'gameDir':
+                    value = getGameDirStr()
+                elif actionName == 'pakingDir':
+                    value = getPakingDirStr()
+                elif actionName == 'attachmentsDir':
+                    value = getAttachmentsDirStr()
+                elif actionName == 'unrealProjectDir':
+                    value = getUnrealProjectDirStr()
                 elif actionName == 'autoLaunch':
                     value = getFlagValueStr(launcherStartsGame)
+                elif actionName == 'uassetGuiPath':
+                    value = getUassetGuiPathStr()
+                elif actionName == 'unrealPakPath':
+                    value = getUnrealPakPathStr()
                 elif actionName == 'moreOptions':
                     help = 'more options and settings'
                 elif actionName == 'folder':
@@ -497,40 +616,201 @@ def runMenu(args, parser):
                         sprint('Local settings files: ')
                     sprint(f'[ {filenameIndex + 1} ] - {filename}')
                     filenames.append(filename)
+                sprintPad()
                 while True:
-                    sprintPad()
-                    inputStr = sprintput('Settings YAML file path (enter number of type a path): ').strip()
-                    sprintPad()
-                    if not inputStr:
-                        settingsFilePath = DefaultSettingsPath
-                        sprintSeparator()
-                        sprint(f'(using default)')
+                    filePath = sprintput(f'Settings YAML file path (enter number or path; enter nothing to open file dialog): ').strip()
+
+                    usingFilePicker = not filePath
+
+                    sprintSeparator()
+
+                    if usingFilePicker:
+                        sprint('Opening file browser...')
                         sprintPad()
+
+                        filePath = getPathInfo(getFile(
+                            title=f'Choose New or Existing Settings File',
+                            initialDir=os.getcwd(),
+                            initialFile=settingsFilePath or None,
+                            fileTypes=[('YAML', '.yaml')],
+                        ) or '')['best']
+
+                    filePath = handleFileChooserResult(settingsFilePath, 'settings file', filePath)
+
+                    if not filePath:
+                        filePath = DefaultSettingsPath
+                        sprint(f'(using default)')
+                        sprintSeparator()
+                        break
+
+                    if not usingFilePicker:
+                        allowSubset = (
+                            filePath[0] not in {'.', '/', '\\'}
+                            and not filePath.lower().endswith('.yaml')
+                        )
+                        inputChoice = parseMenuItemFromToken(filePath, filenames, allowExact=True, allowSubset=allowSubset, allowCustom=True)
+                        if not inputChoice:
+                            esprint('Invalid option.')
+                            sprintSeparator()
+                            continue
+                        elif isinstance(inputChoice, list):
+                            reportAmbigous(filePath, inputChoice)
+                            sprintSeparator()
+                            continue
+                        elif not inputChoice.lower().endswith('.yaml'):
+                            esprint('Invalid path (missing ".yaml" file extension)')
+                            sprintSeparator()
+                            continue
+                        else:
+                            filePath = getPathInfo(inputChoice)['best']
+
+                    if isValidSettingsFilename(filePath):
                         break
                     else:
-                        allowSubset = (
-                            inputStr[0] not in {'.', '/', '\\'}
-                            and not inputStr.lower().endswith('.yaml')
-                        )
-                        inputChoice = parseMenuItemFromToken(inputStr, filenames, allowExact=True, allowSubset=allowSubset, allowCustom=True)
-                        if not inputChoice:
-                            sprintPad()
-                            esprint('Invalid option.')
-                            sprintPad()
-                        elif isinstance(inputChoice, list):
-                            reportAmbigous(inputStr, inputChoice)
-                        elif not inputChoice.lower().endswith('.yaml'):
-                            sprintPad()
-                            esprint('Invalid path (missing ".yaml" file extension)')
-                            sprintPad()
-                        else:
-                            settingsFilePath = getPathInfo(inputChoice)['best']
-                            break
-                readSettings()
-                sprintSeparator()
-                sprint(f'Settings file path set to: {getSettingsFileStr()}')
-                menuSettings['settingsFilePath'] = settingsFilePath
-                menuSettingsDirty = True
+                        esprint('Filename not allowed')
+                        sprintSeparator()
+                        continue
+
+                if settingsFilePath != filePath:
+                    settingsFilePath = filePath
+                    readSettings()
+                    sprint(f'Settings file path set to: {getSettingsFileStr(shorten=False)}')
+                else:
+                    sprint(f'Settings file path unchanged: {getSettingsFileStr(shorten=False)}')
+                if settingsFilePath != menuSettings.get('settingsFilePath', None):
+                    menuSettings['settingsFilePath'] = settingsFilePath
+                    menuSettingsDirty = True
+                shouldPromptToContinue = True
+
+            if popAction('gameDir'):
+                prepActionRun()
+                sprint('Opening file browser...')
+                sprintPad()
+                dirPath = handleFileChooserResult(gameDir, 'game folder', getPathInfo(getDirectory(
+                    title='Select Game Folder',
+                    mustExist=True,
+                    initialDir=gameDir or os.getcwd(),
+                ) or '')['best'])
+                if gameDir != dirPath:
+                    gameDir = dirPath
+                    sprint(f'Game folder set to: {getGameDirStr(shorten=False)}')
+                else:
+                    sprint(f'Game folder unchanged: {getGameDirStr(shorten=False)}')
+                if gameDir != menuSettings.get('gameDir', None):
+                    menuSettings['gameDir'] = gameDir
+                    menuSettingsDirty = True
+                shouldPromptToContinue = True
+
+            if popAction('pakingDir'):
+                prepActionRun()
+                sprint('Opening file browser...')
+                sprintPad()
+                dirPath = handleFileChooserResult(pakingDir, 'paking folder', getPathInfo(getDirectory(
+                    title='Select Paking Folder',
+                    initialDir=pakingDir if (pakingDir and os.path.isdir(pakingDir)) else os.getcwd(),
+                ) or '')['best'])
+                if not dirPath:
+                    dirPath = DefaultPakingDir
+                    sprintPad()
+                    sprint(f'(using default)')
+                    sprintSeparator()
+
+                if pakingDir != dirPath:
+                    pakingDir = dirPath
+                    sprintPad()
+                    sprint(f'Paking folder set to: {getPakingDirStr(shorten=False)}')
+                else:
+                    sprintPad()
+                    sprint(f'Paking folder unchanged: {getPakingDirStr(shorten=False)}')
+                if pakingDir != (menuSettings.get('pakingDir', None) or ''):
+                    menuSettings['pakingDir'] = pakingDir
+                    menuSettingsDirty = True
+                shouldPromptToContinue = True
+
+            if popAction('attachmentsDir'):
+                prepActionRun()
+                sprint('Opening file browser...')
+                sprintPad()
+                dirPath = handleFileChooserResult(attachmentsDir, 'attachments folder', getPathInfo(getDirectory(
+                    title='Select Attachments Folder',
+                    initialDir=attachmentsDir if (attachmentsDir and os.path.isdir(attachmentsDir)) else os.getcwd(),
+                ) or '')['best'])
+                if not dirPath:
+                    dirPath = DefaultAttachmentsDir
+                    sprintPad()
+                    sprint(f'(using default)')
+                    sprintSeparator()
+
+                sprintPad()
+                if attachmentsDir != dirPath:
+                    attachmentsDir = dirPath
+                    sprint(f'Attachments folder set to: {getAttachmentsDirStr(shorten=False)}')
+                else:
+                    sprint(f'Attachments folder unchanged: {getAttachmentsDirStr(shorten=False)}')
+                if attachmentsDir != menuSettings.get('attachmentsDir', None):
+                    menuSettings['attachmentsDir'] = attachmentsDir
+                    menuSettingsDirty = True
+                shouldPromptToContinue = True
+
+            if popAction('unrealProjectDir'):
+                prepActionRun()
+                sprint('Opening file browser...')
+                sprintPad()
+                dirPath = handleFileChooserResult(unrealProjectDir, 'Unreal Engine project folder', getPathInfo(getDirectory(
+                    title='Select Unreal Engine Project Folder',
+                    mustExist=True,
+                    initialDir=unrealProjectDir or os.getcwd(),
+                ) or '')['best'])
+                if unrealProjectDir != dirPath:
+                    unrealProjectDir = dirPath
+                    sprint(f'Unreal Engine project folder set to: {getUnrealProjectDirStr(shorten=False)}')
+                else:
+                    sprint(f'Unreal Engine project folder unchanged: {getUnrealProjectDirStr(shorten=False)}')
+                if unrealProjectDir != menuSettings.get('unrealProjectDir', None):
+                    menuSettings['unrealProjectDir'] = unrealProjectDir
+                    menuSettingsDirty = True
+                shouldPromptToContinue = True
+
+            if popAction('uassetGuiPath'):
+                prepActionRun()
+                sprint('Opening file browser...')
+                sprintPad()
+                filePath = handleFileChooserResult(uassetGuiPath, UassetGuiProgramStem, getPathInfo(getFile(
+                    title=f'Select {UassetGuiProgramStem} Program',
+                    initialDir=os.path.dirname(uassetGuiPath) if uassetGuiPath else os.getcwd(),
+                    initialFile=uassetGuiPath or None,
+                    fileTypes=[('Programs', '.exe')],
+                    mustExist=True,
+                ) or '')['best'])
+                if uassetGuiPath != filePath:
+                    uassetGuiPath = filePath
+                    sprint(f'{UassetGuiProgramStem} path set to: {getUassetGuiPathStr(shorten=False)}')
+                else:
+                    sprint(f'{UassetGuiProgramStem} path unchanged: {getUassetGuiPathStr(shorten=False)}')
+                if uassetGuiPath != menuSettings.get('uassetGuiPath', None):
+                    menuSettings['uassetGuiPath'] = uassetGuiPath
+                    menuSettingsDirty = True
+                shouldPromptToContinue = True
+
+            if popAction('unrealPakPath'):
+                prepActionRun()
+                sprint('Opening file browser...')
+                sprintPad()
+                filePath = handleFileChooserResult(unrealPakPath, UnrealPakProgramStem, getPathInfo(getFile(
+                    title=f'Select {UnrealPakProgramStem} Program',
+                    initialDir=os.path.dirname(unrealPakPath) if unrealPakPath else os.getcwd(),
+                    initialFile=unrealPakPath or None,
+                    fileTypes=[('Programs', '.exe')],
+                    mustExist=True,
+                ) or '')['best'])
+                if unrealPakPath != filePath:
+                    unrealPakPath = filePath
+                    sprint(f'{UnrealPakProgramStem} path set to: {getUnrealPakPathStr(shorten=False)}')
+                else:
+                    sprint(f'{UnrealPakProgramStem} path unchanged: {getUnrealPakPathStr(shorten=False)}')
+                if unrealPakPath != menuSettings.get('unrealPakPath', None):
+                    menuSettings['unrealPakPath'] = unrealPakPath
+                    menuSettingsDirty = True
                 shouldPromptToContinue = True
 
             if popAction('activeModConfig'):
@@ -547,24 +827,24 @@ def runMenu(args, parser):
                     while True:
                         sprintPad()
                         inputStr = sprintput('Active mod config: ').strip()
-                        sprintPad()
+                        sprintSeparator()
                         if not inputStr:
-                            sprintSeparator()
                             sprint(f'(canceled - active mod config unchanged)')
                             sprintPad()
                             break
                         else:
                             inputChoice = parseMenuItemFromToken(inputStr, modConfigNames)
                             if not inputChoice:
-                                sprintPad()
                                 sprint('Invalid option.')
-                                sprintPad()
+                                sprintSeparator()
+                                continue
                             elif isinstance(inputChoice, list):
-                                reportAmbigous(token, inputChoice)
+                                reportAmbigous(inputStr, inputChoice)
+                                sprintSeparator()
+                                continue
                             else:
                                 userSpecifiedModConfigName = inputChoice
                                 activeModConfigName = userSpecifiedModConfigName
-                                sprintPad()
                                 sprint(f'Active mod config set to: "{activeModConfigName}"')
                                 sprintPad()
                                 break
@@ -691,6 +971,12 @@ def runMenu(args, parser):
                 exitCode = runCommand(
                     fromMenu=True,
                     settingsFilePath=settingsFilePath,
+                    gameDir=gameDir,
+                    pakingDir=pakingDir,
+                    attachmentsDir=attachmentsDir,
+                    unrealProjectDir=unrealProjectDir,
+                    uassetGuiPath=uassetGuiPath,
+                    unrealPakPath=unrealPakPath,
                     activeModConfigName=activeModConfigName,
                     inspecting=inspecting,
                     creatingAttachments=creatingAttachments,

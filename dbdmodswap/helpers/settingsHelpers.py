@@ -14,7 +14,7 @@ DefaultCustomizationItemDbPath = f'{CustomizationItemDbAssetName}{UassetFilename
 DefaultAttachmentsDir = 'attachments'
 DefaultPakingDir = 'paking'
 
-def getSettingsTemplate():
+def getSettingsTemplate(**kwargs):
     return (
 f'''# {ProgramName} {Version} settings.
 
@@ -33,23 +33,38 @@ f'''# {ProgramName} {Version} settings.
 
 ## Tools paths
 
-#unrealPakPath: C:/ModTools/{UnrealPakProgramStem}/{UnrealPakProgramFilename}
-#uassetGuiPath: C:/ModTools/{UassetGuiProgramStem}/{UassetGuiProgramFilename}
+{
+    f'unrealPakPath: {kwargs["unrealPakPath"]}' if kwargs.get('unrealPakPath', None)
+    else f'#unrealPakPath: C:/ModTools/{UnrealPakProgramStem}/{UnrealPakProgramFilename}'
+}
+{
+    f'uassetGuiPath: {kwargs["uassetGuiPath"]}' if kwargs.get('uassetGuiPath', None)
+    else f'#uassetGuiPath: C:/ModTools/{UassetGuiProgramStem}/{UassetGuiProgramFilename}'
+}
 
 ## Staging and storage folders
 
 # The folder used for storing, (un)paking, and editing pakchunks.
 # This folder will be created if it doesn't already exist.
-pakingDir: paking
+{
+    f'pakingDir: {kwargs["pakingDir"]}' if kwargs.get('pakingDir', None)
+    else 'pakingDir: paking'
+}
 
 # The folder used for storing socket attachment definition yaml files.
 # This folder will be created if it doesn't already exist.
-attachmentsDir: attachments
+{
+    f'attachmentsDir: {kwargs["attachmentsDir"]}' if kwargs.get('attachmentsDir', None)
+    else 'attachmentsDir: attachments'
+}
 
 ## Game paths
 
 # Path to the game. Used for installing mods and launching the game.
-#gameDir: C:/Dead By Daylight 4.4.2
+{
+    f'gameDir: {kwargs["gameDir"]}' if kwargs.get('gameDir', None)
+    else '#gameDir: C:/Dead By Daylight 4.4.2'
+}
 
 # Top level folder within pakchunks and projects containing game files and cooked content.
 gameName: DeadByDaylight
@@ -144,7 +159,10 @@ reservedPakchunks:
 ## Cooked asset paths
 
 # Path to an Unreal Engine project if you want to use cooked assets from there.
-#unrealProjectDir: C:/DeadByDaylightProject-master
+{
+    f'unrealProjectDir: {kwargs["unrealProjectDir"]}' if kwargs.get('unrealProjectDir', None)
+    else '#unrealProjectDir: C:/DeadByDaylightProject-master'
+}
 
 # Path to a pakchunk pak or folder if you want to use cooked assets from there.
 # This takes precedence over `unrealProjectDir`.
@@ -286,18 +304,22 @@ def getContentDirRelativePath(path):
         return path[len(start):]
 
 
+def isValidSettingsFilename(filename):
+  return (
+      # TODO: remove
+      (True or filename.lower().startswith(DefaultSettingsFileStem))
+      and not filename.lower().startswith('.')
+      and filename.lower().endswith('.yaml')
+      and f'_{CustomizationItemDbAssetName}'.lower() not in filename.lower()
+      and not filename.lower().endswith('-results.yaml')
+      and not filename.lower().endswith('-altered.yaml')
+      and not filename.lower().endswith('-unaltered.yaml')
+  )
+
+
 def findSettingsFiles(dir='.'):
     for entry in os.scandir(dir):
-        if (
-            # TODO: remove
-            (True or entry.name.lower().startswith(DefaultSettingsFileStem))
-            and not entry.name.lower().startswith('.')
-            and entry.name.lower().endswith('.yaml')
-            and f'_{CustomizationItemDbAssetName}'.lower() not in entry.name.lower()
-            and not entry.name.lower().endswith('-results.yaml')
-            and not entry.name.lower().endswith('-altered.yaml')
-            and not entry.name.lower().endswith('-unaltered.yaml')
-        ):
+        if isValidSettingsFilename(entry.name):
             yield entry.name
 
 

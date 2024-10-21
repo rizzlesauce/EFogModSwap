@@ -114,10 +114,15 @@ def runCommand(**kwargs):
     nonInteractive = kwargs.get('nonInteractive', False)
     debug = kwargs.get('debug', False)
     uassetGuiPath = kwargs.get('uassetGuiPath', '')
+    unrealPakPath = kwargs.get('unrealPakPath', '')
     overwriteOverride = kwargs.get('overwriteOverride', None)
     launcherStartsGame = kwargs.get('launcherStartsGame', None)
     fromMenu = kwargs.get('fromMenu', False)
     dryRun = kwargs.get('dryRun', False)
+    gameDir = kwargs.get('gameDir', None)
+    pakingDir = kwargs.get('pakingDir', None)
+    attachmentsDir = kwargs.get('attachmentsDir', None)
+    unrealProjectDir = kwargs.get('unrealProjectDir', None)
 
     DryRunPrefix = '[DryRun] '
     dryRunPrefix = DryRunPrefix if dryRun else ''
@@ -200,7 +205,7 @@ def runCommand(**kwargs):
                 if nonInteractive:
                     printError('Cannot gain elevated access in non-interactive mode')
                 else:
-                    shouldDoIt = confirm('continue to UAC')
+                    shouldDoIt = confirm('continue to UAC', emptyMeansNo=False)
 
             if shouldDoIt:
                 didIt = False
@@ -257,11 +262,9 @@ def runCommand(**kwargs):
     settingsFilePath = getPathInfo(settingsFilePath)['best']
     settings = {}
 
-    attachmentsDir = ''
     cookedContentDir = ''
     cookedContentPaths = []
     cookedContentAssetPathsMap = {}
-    gameDir = ''
     gamePaksDir = ''
     gamePakchunks = []
     modConfigNameGroupsMap = {}
@@ -270,9 +273,6 @@ def runCommand(**kwargs):
     targetActiveMods = []
     pakingDirPakchunkStems = []
     gameName = ''
-    unrealProjectDir = ''
-    unrealPakPath = ''
-    pakingDir = ''
     srcPakPath = ''
     srcPakStem = ''
     srcPakDir = ''
@@ -362,7 +362,7 @@ def runCommand(**kwargs):
             printWarning('Cannot confirm file overwrite in non-interactive mode')
             result = False
         else:
-            result = confirmOverwrite(path, prefix=dryRunPrefixHere)
+            result = confirmOverwrite(path, prefix=dryRunPrefixHere, emptyMeansNo=True)
             shouldWarn = False
 
         if result:
@@ -386,7 +386,14 @@ def runCommand(**kwargs):
     try:
         if not os.path.exists(settingsFilePath):
             printWarning(f'Settings file ("{settingsFilePath}") does not exist. {dryRunPrefix}Creating it now with default content.')
-            yamlStringContent = getSettingsTemplate()
+            yamlStringContent = getSettingsTemplate(
+                gameDir=gameDir,
+                pakingDir=pakingDir,
+                attachmentsDir=attachmentsDir,
+                unrealProjectDir=unrealProjectDir,
+                uassetGuiPath=uassetGuiPath,
+                unrealPakPath=unrealPakPath,
+            )
             if printingYaml:
                 sprint(yamlStringContent)
                 sprintPad()
@@ -406,6 +413,7 @@ def runCommand(**kwargs):
 
         if not unrealPakPath:
             unrealPakPath = settings.get('unrealPakPath', '')
+        unrealPakPath = unrealPakPath or ''
         unrealPakPath = getPathInfo(unrealPakPath)['best']
         if not unrealPakPath:
             if (
@@ -425,6 +433,7 @@ def runCommand(**kwargs):
 
         if not uassetGuiPath:
             uassetGuiPath = settings.get('uassetGuiPath', '')
+        uassetGuiPath = uassetGuiPath or ''
         uassetGuiPath = getPathInfo(uassetGuiPath)['best']
         if not uassetGuiPath:
             if (
@@ -444,6 +453,7 @@ def runCommand(**kwargs):
 
         if not pakingDir:
             pakingDir = settings.get('pakingDir', '')
+        pakingDir = pakingDir or ''
         pakingDir = getPathInfo(pakingDir)['best']
         if not pakingDir:
             pakingDir = getPathInfo(DefaultPakingDir)['best']
@@ -458,6 +468,7 @@ def runCommand(**kwargs):
 
         if not attachmentsDir:
             attachmentsDir = settings.get('attachmentsDir', '')
+        attachmentsDir = attachmentsDir or ''
         attachmentsDir = getPathInfo(attachmentsDir)['best']
         if not attachmentsDir:
             attachmentsDir = getPathInfo(DefaultAttachmentsDir)['best']
@@ -472,6 +483,7 @@ def runCommand(**kwargs):
 
         if not gameDir:
             gameDir = settings.get('gameDir', '')
+        gameDir = gameDir or ''
         gameDir = getPathInfo(gameDir)['best']
         if not gameDir:
             if inspecting:
@@ -488,6 +500,7 @@ def runCommand(**kwargs):
 
         if not unrealProjectDir:
             unrealProjectDir = settings.get('unrealProjectDir', '')
+        unrealProjectDir = unrealProjectDir or ''
         unrealProjectDir = getPathInfo(unrealProjectDir)['best']
         if not unrealProjectDir:
             if (
@@ -2007,7 +2020,7 @@ def runCommand(**kwargs):
                     or installingMods
                 )
             ):
-                shouldProceed = confirm('open the launcher and clear the screen buffer history', pad=True)
+                shouldProceed = confirm('open the launcher and clear the screen buffer history', pad=True, emptyMeansNo=False)
             else:
                 shouldProceed = True
 
