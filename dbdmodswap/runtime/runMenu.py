@@ -313,7 +313,17 @@ def runMenu(args, parser):
             'settingsFile',
             'edit',
             'results',
-            'folder',
+            {
+                'name': 'folders',
+                'items': [
+                    'openSettingsDir',
+                    'openGameDir',
+                    'openPakingDir',
+                    'openAttachmentsDir',
+                    'back',
+                    {'name': 'quit', 'hidden': True},
+                ],
+            },
             {
                 'name': 'moreOptions',
                 'items': [
@@ -500,8 +510,16 @@ def runMenu(args, parser):
                     value = getUnrealPakPathStr()
                 elif actionName == 'moreOptions':
                     help = 'more options and settings'
-                elif actionName == 'folder':
-                    help = f'open settings file folder'
+                elif actionName == 'folders':
+                    help = f'open files and folders'
+                elif actionName == 'openSettingsDir':
+                    help = 'open settings file folder'
+                elif actionName == 'openGameDir':
+                    help = 'open game folder'
+                elif actionName == 'openPakingDir':
+                    help = 'open paking folder'
+                elif actionName == 'openAttachmentsDir':
+                    help = 'open attachments folder'
                 elif actionName == 'edit':
                     help = f'open settings in editor'
                 elif actionName == 'results':
@@ -572,6 +590,30 @@ def runMenu(args, parser):
                 if actionName in actionNamesRemaining:
                     actionNamesRemaining.remove(actionName)
                     return actionName
+
+            def popOpenPathAction(actionName, description, path, isDir=True):
+                nonlocal shouldPromptToContinue
+
+                if popAction(actionName):
+                    prepActionRun()
+                    sprint(f'Opening {description} {"folder" if isDir else "file"}: "{path}"')
+                    shouldPromptToContinue = shouldPromptToContinueForExternalApp
+                    if platform.system() != 'Windows':
+                        sprintSeparator()
+                        esprint('Only supported on Windows')
+                        shouldPromptToContinue = True
+                    else:
+                        try:
+                            if isDir:
+                                openFolder(path)
+                            else:
+                                openFile(path)
+                        except Exception as e:
+                            sprintSeparator()
+                            esprint(e)
+                            sprintPad()
+                            shouldPromptToContinue = True
+                    sprintPad()
 
             shouldPromptToContinueForSettings = False
             shouldPromptToContinueForExternalApp = False
@@ -903,26 +945,10 @@ def runMenu(args, parser):
                     shouldPromptToContinue = True
                 sprintPad()
 
-            if popAction('folder'):
-                prepActionRun()
-                shouldPromptToContinue = shouldPromptToContinueForExternalApp
-                if platform.system() != 'Windows':
-                    sprintPad()
-                    esprint('Only supported on Windows')
-                    shouldPromptToContinue = True
-                else:
-                    settingsPathInfo = getPathInfo(settingsFilePath)
-                    settingsDir = settingsPathInfo['dir']
-                    sprintPad()
-                    sprint(f'Opening {settingsDir}')
-                    try:
-                        openFolder(settingsDir)
-                    except Exception as e:
-                        sprintPad()
-                        esprint(e)
-                        sprintPad()
-                        shouldPromptToContinue = True
-                sprintPad()
+            popOpenPathAction('openSettingsDir', 'settings file', getPathInfo(settingsFilePath)['dir'], isDir=True)
+            popOpenPathAction('openGameDir', 'game', gameDir, isDir=True)
+            popOpenPathAction('openPakingDir', 'paking', pakingDir, isDir=True)
+            popOpenPathAction('openAttachmentsDir', 'attachments', attachmentsDir, isDir=True)
 
             if popAction('debug'):
                 prepActionRun()

@@ -212,7 +212,8 @@ def pressAnyKeyToContinue():
 
 
 def openFolder(dirPath):
-    os.system(getStartCommand(dirPath))
+    if os.system(getStartCommand(dirPath)):
+        raise ValueError(f'Could not open "{dirPath}"')
 
 
 def openFile(filePath):

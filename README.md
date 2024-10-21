@@ -13,6 +13,24 @@ from attachment blueprint game paths.
 
 ![DbdModSwap walkthrough](https://github.com/user-attachments/assets/6b49c0da-4e28-479d-aa21-5bc53ea09492)
 
+## Menu features
+
+The tool has several use cases. Generally, it works by configuring the settings for each use case
+and then running the associated menu actions to apply the changes.
+
+### Using `List`
+
+Running the `List` action at any time can provide useful information regarding your configuration.
+Not only can it generate a settings file and help troubleshoot issues, it also generates a results
+file with data that you may want to conveniently copy back into your settings file for certain settings
+(such as lists of installed and stored pakchunks and available cooked assets).
+
+### Chaining menu actions
+
+The menu prompt allows you to combine multiple menu actions together by typing in multiple menu item
+numbers or names. When typing a menu item name, you can just type part of the name and it
+will match it if it isn't amgiguous.
+
 ## Getting started
 
 Download the latest EXE from the Releases page. Put it in a folder named DbdModSwap (or whatever
@@ -20,14 +38,6 @@ you want to call it).
 
 Run `DbdModSwap.exe` with no arguments (or double click on it from file explorer) to enter the
 interactive menu.
-
-The tool has several use cases. Generally, it works by configuring the settings for each use case
-and then running the associated menu actions to apply the changes.
-
-Running the `List` action at any time can provide useful information regarding your configuration.
-Not only can it generate a settings file and help troubleshoot issues, it also generates a results
-file with data that you may want to conveniently copy back into your settings file for certain settings
-(such as lists of installed and stored pakchunks and available cooked assets).
 
 ### Configure game folder
 
@@ -44,13 +54,7 @@ or use the default. To change this folder, select `MoreOptions`, `PakingDir`.
 Then, run `List` to generate a settings file and get info on your current configuration. The
 settings file comes with inline documentation to describe each setting.
 
-### Chaining menu actions
-
-The menu prompt allows you to combine multiple menu actions together by typing in multiple menu item
-numbers or names. When typing a menu item name, you can just type part of the name and it
-will match it if it isn't amgiguous.
-
-### Setting auto launch
+### Configure auto launch
 
 By default, when you enter the launcher menu, the game will automatically start. To prevent this,
 go to the submenu `MoreOptions` and toggle the `AutoLaunch` setting.
@@ -125,8 +129,7 @@ By default, this will write any discovered attachment definitions to the `attach
 Edit each new attachment definition YAML file to ensure that `attachmentId`
 is globally unique (it should not duplicate any other attachment IDs in the game).
 You may also add a short, descriptive display name for the attachment (e.g., `Hiking Backpack`).
-You can view attachment definition files by opening your DbdModSwap folder
-(menu option: `Folder`) and, from there, opening the `attachments` folder.
+You can view attachment definition files by selecting `Folders`, `OpenAttachmentsDir`.
 Some attachments might be duplicates of others, so just delete those.
 
 Once you're done editing the attachment definitions, run `Rename` to have the tool rename
