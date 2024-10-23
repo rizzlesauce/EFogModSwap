@@ -316,7 +316,7 @@ def runCommand(**kwargs):
     nameMapSet = set(nameMapArray)
     attachmentsRenamed = {}
 
-    dryRunDirsCreated = {}
+    dryRunDirsCreated = set()
 
     def ensureDir(dir, title='Folder', warnIfNotExist=True):
         dir = getPathInfo(dir)['best']
