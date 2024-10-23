@@ -143,7 +143,7 @@ settings file, configuring `modGroups` and `modConfigs`. Finally, run `ActiveMod
     )
     parser.add_argument(
         '--dryRun',
-        help='simulate actions without making any file changes',
+        help='simulate actions without making any changes (may still write temporary files)',
         action='store_true',
     )
     parser.add_argument(

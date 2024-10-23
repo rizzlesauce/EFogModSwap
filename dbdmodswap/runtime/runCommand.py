@@ -9,6 +9,7 @@ from itertools import combinations
 
 import yaml
 
+from dbdmodswap.helpers import tempFileHelpers
 from dbdmodswap.helpers.attachmentHelpers import (basicAttachmentTemplate,
                                                   getAttachmentDisplayName,
                                                   getAttachmentFilename)
@@ -297,7 +298,6 @@ def runCommand(**kwargs):
     destPlatform = DefaultPlatform
 
     customizationItemDbPath = ''
-    customizationItemDbJsonPath = ''
     customizationItemDb = None
 
     equivalentParts = {}
@@ -347,7 +347,7 @@ def runCommand(**kwargs):
         if dryRunHere is None:
             dryRunHere = dryRun
 
-        dryRunPrefixHere = DryRunPrefix if dryRunHere else ''
+        dryRunHerePrefix = DryRunPrefix if dryRunHere else ''
 
         if not os.path.exists(path):
             return True
@@ -362,12 +362,12 @@ def runCommand(**kwargs):
             printWarning('Cannot confirm file overwrite in non-interactive mode')
             result = False
         else:
-            result = confirmOverwrite(path, prefix=dryRunPrefixHere, emptyMeansNo=True)
+            result = confirmOverwrite(path, prefix=dryRunHerePrefix, emptyMeansNo=True)
             shouldWarn = False
 
         if result:
             if shouldWarn or dryRunHere:
-                printWarning(f'{dryRunPrefixHere}Overwriting "{path}"')
+                printWarning(f'{dryRunHerePrefix}Overwriting "{path}"')
         elif shouldWarn:
             printWarning(f'Skipping write of "{path}" (file exists)')
 
@@ -918,6 +918,35 @@ def runCommand(**kwargs):
                         printWarning(f'Trying `customizationItemDbPath` as normal file path "{customizationItemDbPath}"')
 
         if customizationItemDbPath:
+            def readDatabaseFromJson(customizationItemDbJsonPath):
+                result = None
+                with oneLinePrinter() as oneLinePrint:
+                    sprintPad()
+                    oneLinePrint(f'Reading {CustomizationItemDbAssetName} JSON from "{customizationItemDbJsonPath}"...')
+                    with open(customizationItemDbJsonPath, 'r') as file:
+                        result = json.load(file)
+                    oneLinePrint('done.')
+                return result
+
+            def readDatabaseFromUasset(customizationItemDbPath, customizationItemDbJsonPath, dryRunHere=False):
+                dryRunHerePrefix = DryRunPrefix if dryRunHere else ''
+                sprintPad()
+                sprint(f'{dryRunHerePrefix}Converting "{customizationItemDbPath}" to JSON, writing "{customizationItemDbJsonPath}"')
+                if os.path.exists(uassetGuiPath):
+                    shouldWrite = not dryRunHere or (not nonInteractive and confirm(f'write {CustomizationItemDbAssetName} JSON ("{customizationItemDbJsonPath}") despite dry run, to read data', pad=True, emptyMeansNo=True))
+                    written = False
+                    if shouldWrite:
+                        if readyToWrite(customizationItemDbJsonPath, overwrite=True, dryRunHere=False):
+                            uassetToJson(customizationItemDbPath, customizationItemDbJsonPath, uassetGuiPath)
+                            written = True
+                    if written or dryRunHere:
+                        sprint(f'{dryRunHerePrefix if not written else ""}Done converting.')
+                    sprintPad()
+                    if written:
+                        return readDatabaseFromJson(customizationItemDbJsonPath)
+                else:
+                    printError(f'`uassetGuiPath` ("{uassetGuiPath})" does not exist')
+
             customizationItemDbPathInfo = getPathInfo(customizationItemDbPath)
             customizationItemDbSupportedFileTypes = ['.json', '.uasset']
             if customizationItemDbPathInfo['suffixLower'] not in customizationItemDbSupportedFileTypes:
@@ -925,38 +954,33 @@ def runCommand(**kwargs):
             elif not os.path.isfile(customizationItemDbPath):
                 printWarning(f'`customizationItemDbPath` ("{customizationItemDbPath}") does not exist')
             elif customizationItemDbPathInfo['suffixLower'] == '.json':
-                customizationItemDbJsonPath = customizationItemDbPath
+                customizationItemDb = readDatabaseFromJson(customizationItemDbPath)
             elif customizationItemDbPathInfo['suffixLower'] == '.uasset':
-                customizationItemDbJsonPath = getPathInfo(os.path.join(
-                    settingsPathInfo['dir'],
-                    f"{settingsPathInfo['stem']}_{customizationItemDbPathInfo['stem']}-unaltered.json",
-                ))['best']
-                sprintPad()
-                sprint(f'{dryRunPrefix}Converting "{customizationItemDbPath}" to JSON, writing "{customizationItemDbJsonPath}"')
-                if os.path.exists(uassetGuiPath):
-                    shouldWrite = not dryRun or (not nonInteractive and confirm(f'write {CustomizationItemDbAssetName} JSON ("{customizationItemDbJsonPath}") despite dry run', pad=True, emptyMeansNo=True))
-                    written = False
-                    if shouldWrite:
-                        if readyToWrite(customizationItemDbJsonPath, overwrite=True, dryRunHere=False):
-                            uassetToJson(customizationItemDbPath, customizationItemDbJsonPath, uassetGuiPath)
-                            written = True
-                    if written or dryRun:
-                        sprint(f'{dryRunPrefix if not written else ""}Done converting.')
-                    sprintPad()
+                usingTempFile = True
+                customizationItemDbJsonStem = f"{settingsPathInfo['stem']}_{customizationItemDbPathInfo['stem']}-unaltered"
+                if usingTempFile:
+                    with tempFileHelpers.openTemporaryFile(
+                        dir=settingsPathInfo['dir'],
+                        prefix=f'{customizationItemDbJsonStem}_',
+                        suffix='.json',
+                        mode='w',
+                    ) as customizationItemDbJsonFile:
+                        customizationItemDbJsonPath = getPathInfo(customizationItemDbJsonFile.name)['best']
+                        customizationItemDbJsonFile.close()
+                        pathlib.Path.unlink(customizationItemDbJsonPath)
+                        customizationItemDb = readDatabaseFromUasset(customizationItemDbPath, customizationItemDbJsonPath, dryRunHere=False)
                 else:
-                    printError(f'`uassetGuiPath` ("{uassetGuiPath})" does not exist')
-                    customizationItemDbJsonPath = ''
+                    customizationItemDbJsonPath = getPathInfo(
+                        os.path.join(
+                            settingsPathInfo['dir'],
+                            f'{customizationItemDbJsonStem}.json',
+                        ),
+                    )['best']
+                    customizationItemDb = readDatabaseFromUasset(customizationItemDbPath, customizationItemDbJsonPath, dryRunHere=False)
             else:
                 raise ValueError('internal error')
 
-            if customizationItemDbJsonPath:
-                with oneLinePrinter() as oneLinePrint:
-                    sprintPad()
-                    oneLinePrint(f'Reading {CustomizationItemDbAssetName} JSON from "{customizationItemDbJsonPath}"...')
-                    with open(customizationItemDbJsonPath, 'r') as file:
-                        customizationItemDb = json.load(file)
-                    oneLinePrint('done.')
-
+            if customizationItemDb:
                 if printingJson:
                     sprintPad()
                     sprint(jsonDump(customizationItemDb, pretty=True))
@@ -1749,6 +1773,9 @@ def runCommand(**kwargs):
                                 if os.path.exists(unrealPakPath):
                                     if not dryRun:
                                         unrealPak(destPakDir, destPakPath, unrealPakPath)
+                                    else:
+                                        # simulate creating the pakchunk file
+                                        pakingDirPakchunkStems.append(destPakStem)
                                     sprint(f'{dryRunPrefix}Done paking.')
                                 else:
                                     printError(f'`unrealPakPath` ("{unrealPakPath})" does not exist')
