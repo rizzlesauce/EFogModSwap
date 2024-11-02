@@ -10,6 +10,8 @@ def jsonifyDataRecursive(value, isKey=False):
             newValue = ','.join(listVersion)
         else:
             newValue = listVersion
+    elif isinstance(value, list):
+        newValue = [jsonifyDataRecursive(item) for item in value]
     else:
         newValue = value
 

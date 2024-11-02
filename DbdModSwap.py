@@ -6,39 +6,45 @@ Module Docstring
 import argparse
 import sys
 
-from dbdmodswap.helpers.consoleHelpers import sprint, sprintPad
+from dbdmodswap.helpers.consoleHelpers import (setConsoleWindow, sprint,
+                                               sprintPad)
 from dbdmodswap.helpers.customizationItemDbHelpers import \
     CustomizationItemDbAssetName
+from dbdmodswap.helpers.guiHelpers import getForegroundWindow
 from dbdmodswap.helpers.pakHelpers import UnrealPakProgramFilename
 from dbdmodswap.helpers.pathHelpers import getPathInfo
 from dbdmodswap.helpers.settingsHelpers import (DefaultAttachmentsDir,
+                                                DefaultGameVersion,
                                                 DefaultPakingDir,
                                                 DefaultSettingsPath,
                                                 getEnabledDisabledStr)
 from dbdmodswap.helpers.uassetHelpers import (UassetGuiProgramFilename,
                                               UassetGuiProgramStem)
+from dbdmodswap.helpers.umodelHelpers import UmodelProgramFilename
 from dbdmodswap.helpers.windowsHelpers import setConsoleTitle
-from dbdmodswap.metadata.programMetaData import (ConsoleTitle, ProgramName,
-                                                 Version)
-from dbdmodswap.runtime.runCommand import DefaultLauncherStartsGame, runCommand
+from dbdmodswap.metadata.programMetaData import (Author, ConsoleTitle, License,
+                                                 ProgramName, Version)
+from dbdmodswap.runtime.runCommand import (DbdModSwapCommandRunner,
+                                           DefaultLauncherStartsGame)
 from dbdmodswap.runtime.runMenu import runMenu
 
-__author__ = 'Ross Adamson'
+__author__ = Author
 __version__ = Version
-__license__ = 'MIT'
+__license__ = License
 
 if __name__ == '__main__':
     """ This is executed when run from the command line """
     parser = argparse.ArgumentParser(
         prog=ProgramName,
-        description='''Swaps mods and character model accessories
+        description='''Swaps mod configs and character model accessories
 
 Running with no arguments opens the interactive menu. To get started, configure the
 game folder by selecting `MoreOptions`, `GameDir` and choosing the game folder from
-the file browser that opens. Then, select `List` from the menu to create a settings
+the file browser that opens. Then, set the `GameVersion` from the same menu.
+Select `List` from the main menu to create a settings
 file with helpful inline documentation. Select `Edit` from the menu to edit the
 settings file, configuring `modGroups` and `modConfigs`. Finally, run `ActiveModConfig`,
-`Install`, and `Launcher` to start the game with your selected mod configuration.
+`Install`, and `Launch` to start the game with your selected mod configuration.
 '''.format(
             ProgramName=ProgramName,
             CustomizationItemDbResourceName=CustomizationItemDbAssetName,
@@ -57,13 +63,18 @@ settings file, configuring `modGroups` and `modConfigs`. Finally, run `ActiveMod
         type=str,
     )
     parser.add_argument(
+        '--gameVersion',
+        help=f'game version (default: `{DefaultGameVersion}`)',
+        type=str,
+    )
+    parser.add_argument(
         '--pakingDir',
-        help=f'pakchunks storage folder (default: `{getPathInfo(DefaultPakingDir)["best"]}`)',
+        help=f'pakchunks storage folder (default: `{getPathInfo(DefaultPakingDir)["best"]}-<gameVersion>`)',
         type=str,
     )
     parser.add_argument(
         '--attachmentsDir',
-        help=f'attachment definitions storage folder (default: `{getPathInfo(DefaultAttachmentsDir)["best"]}`)',
+        help=f'attachment definitions storage folder (default: `{getPathInfo(DefaultAttachmentsDir)["best"]}-<gameVersion>`)',
         type=str,
     )
     parser.add_argument(
@@ -82,6 +93,16 @@ settings file, configuring `modGroups` and `modConfigs`. Finally, run `ActiveMod
         type=str,
     )
     parser.add_argument(
+        '--sigFile',
+        help=f'path to sig file',
+        type=str,
+    )
+    parser.add_argument(
+        '--umodelPath',
+        help=f'path to {UmodelProgramFilename}',
+        type=str,
+    )
+    parser.add_argument(
         '--activeModConfig',
         help=f'override active mod configuration',
         type=str,
@@ -93,7 +114,7 @@ settings file, configuring `modGroups` and `modConfigs`. Finally, run `ActiveMod
     )
     parser.add_argument(
         '--create',
-        help='create socket attachment definitions interactively',
+        help='create socket attachments interactively',
         action='store_true',
     )
     parser.add_argument(
@@ -122,7 +143,7 @@ settings file, configuring `modGroups` and `modConfigs`. Finally, run `ActiveMod
         action='store_true',
     )
     parser.add_argument(
-        '--launcher',
+        '--launch',
         help='enter game launcher menu (and optionally auto launch the game)',
         action='store_true',
     )
@@ -134,6 +155,11 @@ settings file, configuring `modGroups` and `modConfigs`. Finally, run `ActiveMod
     parser.add_argument(
         '--kill',
         help='end game processes if they are running',
+        action='store_true',
+    )
+    parser.add_argument(
+        '--search',
+        help='search pakchunks and assets',
         action='store_true',
     )
     parser.add_argument(
@@ -163,6 +189,7 @@ settings file, configuring `modGroups` and `modConfigs`. Finally, run `ActiveMod
     )
     args = parser.parse_args()
 
+    setConsoleWindow(getForegroundWindow())
     setConsoleTitle(ConsoleTitle)
 
     if args.ni:
@@ -176,15 +203,18 @@ settings file, configuring `modGroups` and `modConfigs`. Finally, run `ActiveMod
         and not args.mix
         and not args.pak
         and not args.install
-        and not args.launcher
+        and not args.launch
         and not args.kill
+        and not args.search
         and not args.ni
     ):
         exitCode = runMenu(args, parser)
     else:
-        exitCode = runCommand(
+        runner = DbdModSwapCommandRunner()
+        exitCode = runner.runCommand(
             settingsFilePath=args.settingsFile,
             gameDir=args.gameDir,
+            gameVersion=args.gameVersion,
             pakingDir=args.pakingDir,
             attachmentsDir=args.attachmentsDir,
             unrealProjectDir=args.unrealProjectDir,
@@ -196,11 +226,14 @@ settings file, configuring `modGroups` and `modConfigs`. Finally, run `ActiveMod
             mixingAttachments=args.mix,
             paking=args.pak,
             installingMods=args.install,
-            openingGameLauncher=args.launcher,
+            openingGameLauncher=args.launch,
             launcherStartsGame=args.autoLaunch,
             killingGame=args.kill,
+            searchingGameAssets=args.search,
             uassetGuiPath=args.uassetGuiPath,
             unrealPakPath=args.unrealPakPath,
+            sigFilePath=args.sigFile,
+            umodelPath=args.umodelPath,
             dryRun=args.dryRun,
             overwriteOverride=args.overwrite,
             debug=args.debug,

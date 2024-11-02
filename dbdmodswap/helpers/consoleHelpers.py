@@ -5,11 +5,22 @@ from contextlib import contextmanager
 
 from .windowsHelpers import pressAnyKeyToContinue
 
+consoleWindow = None
+
 hasPriorPrintSection = False
 needsNewPrintSection = 0
 sprintPads = 0
 
 sprintRecording = None
+
+def getConsoleWindow():
+    return consoleWindow
+
+
+def setConsoleWindow(hwnd):
+    global consoleWindow
+    consoleWindow = hwnd
+
 
 def getSprintIsRecording():
     return sprintRecording is not None
@@ -129,13 +140,18 @@ def esprint(*args, **kwargs):
 
 @contextmanager
 def oneLinePrinter():
+    calledPrint = False
+
     def myPrint(message):
+        nonlocal calledPrint
         sprint(message, end='')
+        calledPrint = True
     try:
         yield myPrint
     finally:
         # end the line
-        sprint('')
+        if calledPrint:
+            sprint('')
 
 
 def promptToContinue(purpose='to continue...', pad=True):
@@ -155,13 +171,14 @@ def confirm(action, emptyMeansNo=None, pad=False, prefix=None):
         sprintPad()
     while True:
         result = sprintput(f'{prefix or ""}{action[0].upper()}{action[1:]} ({"Y" if emptyMeansNo is False else "y"}/{"N" if emptyMeansNo else "n"})? ').strip()
-        if result.upper() == 'Y':
+        if result.upper() == 'Y' or (not result and emptyMeansNo is False):
             confirmed = True
             break
 
         if result.upper() == 'N' or (not result and emptyMeansNo is True):
             confirmed = False
             break
+
     if pad:
         sprintPad()
 

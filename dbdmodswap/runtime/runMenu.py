@@ -7,7 +7,8 @@ from dbdmodswap.helpers.consoleHelpers import (confirm, esprint,
                                                promptToContinue, sprint,
                                                sprintClear, sprintPad,
                                                sprintput, sprintSeparator)
-from dbdmodswap.helpers.gameHelpers import (getGameIsRunning,
+from dbdmodswap.helpers.gameHelpers import (KnownSupportedGameVersions,
+                                            getGameIsRunning,
                                             getGameServerIsRunning)
 from dbdmodswap.helpers.guiHelpers import getDirectory, getFile
 from dbdmodswap.helpers.pakHelpers import UnrealPakProgramStem
@@ -20,11 +21,13 @@ from dbdmodswap.helpers.settingsHelpers import (DefaultAttachmentsDir,
                                                 getResultsFilePath,
                                                 isValidSettingsFilename)
 from dbdmodswap.helpers.uassetHelpers import UassetGuiProgramStem
+from dbdmodswap.helpers.umodelHelpers import UmodelProgramStem
 from dbdmodswap.helpers.windowsHelpers import openFile, openFolder
 from dbdmodswap.helpers.yamlHelpers import yamlDump
 from dbdmodswap.metadata.programMetaData import ProgramName, Version
-from dbdmodswap.runtime.runCommand import (DefaultLauncherStartsGame,
-                                           readSettingsRecursive, runCommand)
+from dbdmodswap.runtime.runCommand import (DbdModSwapCommandRunner,
+                                           DefaultLauncherStartsGame,
+                                           readSettingsRecursive)
 
 
 def getYesOrNoStr(flag):
@@ -38,16 +41,24 @@ def getOnOrOffStr(flag):
 def reportAmbigous(token, matchingItems):
     tokenLower = token.lower()
 
-    def highlightedMenuItem(item):
-        itemName = item if isinstance(item, str) else item['name']
+    def highlightedMenuItem(itemName):
         itemNameLower = itemName.lower()
         startIndex = itemNameLower.index(tokenLower)
         firstPart = itemName[:startIndex]
         lastPart = itemName[(startIndex + len(token)):]
         return f"{firstPart}{token.upper()}{lastPart}"
 
-    esprint(f'"{token}" could be {" | ".join([highlightedMenuItem(item) for item in matchingItems])}.')
+    esprint(f'"{token}" could be {" | ".join([highlightedMenuItem(name) for name, item in matchingItems])}.')
     esprint('Type more of the name.')
+
+
+def getMenuItemObject(menuItem):
+    if isinstance(menuItem, dict):
+        return menuItem
+
+    return {
+        'name': menuItem,
+    }
 
 
 def parseMenuItemFromToken(token, menuItems, allowExact=True, allowSubset=True, allowCustom=False):
@@ -58,8 +69,15 @@ def parseMenuItemFromToken(token, menuItems, allowExact=True, allowSubset=True, 
 
     if tokenLower:
         menuNumberItemMap = {i + 1: item for i, item in enumerate(menuItems)}
-        menuItemNamesLower = [(item if isinstance(item, str) else item['name']).lower() for item in menuItems]
-        menuNameItemMap = {name: item for name, item in zip(menuItemNamesLower, menuItems)}
+        menuAliasLowerItemMap = {}
+        menuAliasLowerAliasMap = {}
+        for item in menuItems:
+            itemObject = getMenuItemObject(item)
+            aliases = [itemObject['name']] + itemObject.get('item', {}).get('aliases', [])
+            for alias in aliases:
+                aliasLower = alias.lower()
+                menuAliasLowerItemMap[aliasLower] = item
+                menuAliasLowerAliasMap[aliasLower] = alias
 
         try:
             tokenNumber = int(token)
@@ -72,12 +90,19 @@ def parseMenuItemFromToken(token, menuItems, allowExact=True, allowSubset=True, 
             result = menuNumberItemMap.get(tokenNumber, None)
         else:
             if not result and allowExact:
-                result = menuNameItemMap.get(tokenLower, None)
+                result = menuAliasLowerItemMap.get(tokenLower, None)
 
             if not result and allowSubset:
-                resultMatches = [item for name, item in menuNameItemMap.items() if tokenLower in name]
+                resultMatches = []
+                matchItemNames = set()
+                for nameLower, item in menuAliasLowerItemMap.items():
+                    name = getMenuItemObject(item)['name']
+                    if name not in matchItemNames and tokenLower in nameLower:
+                        resultMatches.append((menuAliasLowerAliasMap[nameLower], item))
+                        matchItemNames.add(name)
+
                 if len(resultMatches) == 1:
-                    result = resultMatches[0]
+                    result = resultMatches[0][1]
                 elif len(resultMatches) > 0:
                     result = resultMatches
 
@@ -96,7 +121,7 @@ def runMenu(args, parser):
 
     def saveMenuSettings():
         try:
-            with open(menuSettingsPath, 'w') as file:
+            with open(menuSettingsPath, 'w', encoding='utf-8') as file:
                 yamlDump(menuSettings, file)
             return True
         except Exception as e:
@@ -112,7 +137,7 @@ def runMenu(args, parser):
         if menuSettings is None:
             if os.path.isfile(menuSettingsPath):
                 try:
-                    with open(menuSettingsPath, 'r') as file:
+                    with open(menuSettingsPath, 'r', encoding='utf-8') as file:
                         menuSettings = yaml.safe_load(file)
                 except Exception as e:
                     sprintPad()
@@ -151,14 +176,19 @@ def runMenu(args, parser):
         menuSettings['gameDir'] = gameDir
         menuSettingsDirty = True
 
-    pakingDir = (args.pakingDir or '').strip() or menuSettings.get('pakingDir', None) or DefaultPakingDir
+    gameVersion = (args.gameVersion or '').strip() or menuSettings.get('gameVersion', None)
+    if gameVersion != menuSettings.get('gameVersion', None):
+        menuSettings['gameVersion'] = gameVersion
+        menuSettingsDirty = True
+
+    pakingDir = (args.pakingDir or '').strip() or menuSettings.get('pakingDir', None) or None
     if pakingDir:
         pakingDir = getPathInfo(pakingDir)['best']
     if pakingDir != menuSettings.get('pakingDir', None):
         menuSettings['pakingDir'] = pakingDir
         menuSettingsDirty = True
 
-    attachmentsDir = (args.attachmentsDir or '').strip() or menuSettings.get('attachmentsDir', None) or DefaultAttachmentsDir
+    attachmentsDir = (args.attachmentsDir or '').strip() or menuSettings.get('attachmentsDir', None) or None
     if attachmentsDir:
         attachmentsDir = getPathInfo(attachmentsDir)['best']
     if attachmentsDir != menuSettings.get('attachmentsDir', None):
@@ -184,6 +214,20 @@ def runMenu(args, parser):
         unrealPakPath = getPathInfo(unrealPakPath)['best']
     if unrealPakPath != menuSettings.get('unrealPakPath', None):
         menuSettings['unrealPakPath'] = unrealPakPath
+        menuSettingsDirty = True
+
+    sigFilePath = (args.sigFile or '').strip() or menuSettings.get('sigFilePath', None)
+    if sigFilePath:
+        sigFilePath = getPathInfo(sigFilePath)['best']
+    if sigFilePath != menuSettings.get('sigFilePath', None):
+        menuSettings['sigFilePath'] = sigFilePath
+        menuSettingsDirty = True
+
+    umodelPath = (args.umodelPath or '').strip() or menuSettings.get('umodelPath', None)
+    if umodelPath:
+        umodelPath = getPathInfo(umodelPath)['best']
+    if umodelPath != menuSettings.get('umodelPath', None):
+        menuSettings['umodelPath'] = umodelPath
         menuSettingsDirty = True
 
     userSpecifiedModConfigName = (args.activeModConfig or '').strip() or menuSettings.get('activeModConfig', None)
@@ -249,6 +293,12 @@ def runMenu(args, parser):
     def getUnrealPakPathStr(shorten=None):
         return getFilePathStr(unrealPakPath, shorten=shorten)
 
+    def getSigFilePathStr(shorten=None):
+        return getFilePathStr(sigFilePath, shorten=shorten)
+
+    def getUmodelPathStr(shorten=None):
+        return getFilePathStr(umodelPath, shorten=shorten)
+
     def getActiveModConfigStr():
         # TODO: report whether mod config is verified to be installed or not, and whether it matches `activeModConfig` settings
         return getValueStr(f'"{activeModConfigName}"{("" if activeModConfigExists else " (missing)")}' if activeModConfigName else None)
@@ -305,56 +355,116 @@ def runMenu(args, parser):
         'name': 'main',
         'items': [
             {'title': 'Game'},
-            'activeModConfig',
-            'install',
-            'launcher',
-            'kill',
+            {'name': 'modConfig',
+             'aliases': ['activeModConfig',
+                         'activeConfig',
+                         'activeMods',
+                         'mods']},
+            {'name': 'install'},
+            {'name': 'auto', 'hidden': True},
+            {'name': 'launch',
+             'aliases': ['launcher']},
+            {'name': 'kill'},
             {'title': 'Settings'},
-            'settingsFile',
-            'edit',
-            'results',
-            {
-                'name': 'folders',
+            {'name': 'settingsFile'},
+            {'name': 'edit'},
+            {'name': 'results',
+             'aliases': ['commandResults',
+                         'commandOutput']},
+            {'name': 'folders',
+             'aliases': ['dirs',
+                         'directory',
+                         'directories'],
                 'items': [
-                    'openSettingsDir',
-                    'openGameDir',
-                    'openPakingDir',
-                    'openAttachmentsDir',
-                    'back',
-                    {'name': 'quit', 'hidden': True},
+                    # TODO: add srcPakDir, unrealProjectDir, extraContentDir
+                    {'name': 'openSettingsDir'},
+                    {'name': 'openGameDir'},
+                    {'name': 'openPakingDir',
+                     'aliases': ['openPaksDirectory',
+                                 'openPaksFolder',
+                                 'openPakingDirectory',
+                                 'openPakingFolder']},
+                    {'name': 'openAttachmentsDir'},
+                    {'name': 'back',
+                     'aliases': ['return',
+                                 'previous']},
+                    {'name': 'quit', 'hidden': True,
+                     'aliases': ['exit']},
                 ],
             },
-            {
-                'name': 'moreOptions',
+            {'name': 'moreOptions',
                 'items': [
                     {'title': 'Game'},
-                    'autoLaunch',
-                    'gameDir',
-                    'pakingDir',
+                    {'name': 'autoLaunch'},
+                    {'name': 'gameDir',
+                     'aliases': ['gameFolder',
+                                 'gameDirectory']},
+                    {'name': 'gameVersion'},
+                    {'name': 'pakingDir',
+                     'aliases': ['paksDirectory',
+                                 'paksFolder',
+                                 'pakingDirectory',
+                                 'pakingFolder']},
                     {'title': 'Modding'},
-                    'uassetGuiPath',
-                    'unrealPakPath',
-                    'unrealProjectDir',
-                    'attachmentsDir',
-                    'back',
-                    {'name': 'quit', 'hidden': True},
+                    {'name': 'uassetGuiPath'},
+                    {'name': 'unrealPakPath'},
+                    {'name': 'sigFile'},
+                    {'name': 'umodelPath'},
+                    {'name': 'unrealProjectDir',
+                     'aliases': ['unrealProjectDirectory',
+                                 'unrealProjectFolder']},
+                    {'name': 'attachmentsDir',
+                     'aliases': ['attachmentsDirectory',
+                                 'attachmentsFolder',
+                                 'socketsFolder',
+                                 'socketsDirectory']},
+                    {'name': 'back',
+                     'aliases': ['return',
+                                 'previous']},
+                    {'name': 'quit', 'hidden': True,
+                     'aliases': ['exit']},
                 ],
             },
             {'title': 'Modding'},
-            'list',
-            'create',
-            'extract',
-            'rename',
-            'mix',
-            'pak',
+            {'name': 'list'},
+            {'name': 'sockets',
+             'aliases': ['socketing',
+                         'socketDefinitions',
+                         'socketAttachments',
+                         'socketAttachmentDefinitions',
+                         'attachments',
+                         'attachmentDefinitions'],
+                'items': [
+                    {'name': 'list',
+                     'aliases': ['inspect']},
+                    {'name': 'search'},
+                    {'name': 'create'},
+                    {'name': 'extract'},
+                    {'name': 'rename'},
+                    {'name': 'results',
+                    'aliases': ['commandResults',
+                                'commandOutput']},
+                    {'name': 'overwrite', 'hidden': True},
+                    {'name': 'dryRun', 'hidden': True},
+                    {'name': 'debug', 'hidden': True},
+                    {'name': 'back',
+                     'aliases': ['return',
+                                 'previous']},
+                    {'name': 'quit', 'hidden': True,
+                     'aliases': ['exit']},
+                ],
+            },
+            {'name': 'mix'},
+            {'name': 'pak'},
             {'title': 'Flags'},
-            'overwrite',
-            'dryRun',
-            'debug',
+            {'name': 'overwrite'},
+            {'name': 'dryRun'},
+            {'name': 'debug'},
             {'title': 'About'},
-            'version',
-            'help',
-            'quit',
+            {'name': 'version'},
+            {'name': 'help'},
+            {'name': 'quit',
+             'aliases': ['exit']},
         ]
     }
 
@@ -365,31 +475,29 @@ def runMenu(args, parser):
 
     menuStack = []
 
-    def getMenuItemObject(menuItem):
-        if isinstance(menuItem, dict):
-            return menuItem
-
-        return {
-            'name': menuItem,
-        }
-
     def setMenu(menu):
         nonlocal activeMenu
         nonlocal activeMenuActionNameMap
         nonlocal activeMenuSubMenuMap
         nonlocal activeMenuActions
 
-        activeMenuObjects = [getMenuItemObject(item) for item in menu['items']]
-        activeMenuActionNames = [item['name'] for item in activeMenuObjects if item.get('name', None)]
-        activeMenuSubMenuMap = {item['name']: item for item in activeMenuObjects if item.get('items', None)}
+        activeMenuAllObjects = [getMenuItemObject(item) for item in menu['items']]
+        activeMenuActionNameItemObjectPairs = [(item['name'], item) for item in activeMenuAllObjects if item.get('name', None)]
+        activeMenuSubMenuMap = {item['name']: item for item in activeMenuAllObjects if item.get('items', None)}
+        for item in list(activeMenuSubMenuMap.values()):
+            for alias in item.get('aliases', []):
+                activeMenuSubMenuMap[alias] = item
+
         activeMenuActionNameMap = {
             actionName: {
                 'name': actionName,
                 'number': i + 1,
+                'item': itemObject,
                 'action': actionsMap.get(actionName, None),
-            } for i, actionName in enumerate(activeMenuActionNames)
+            } for i, (actionName, itemObject) in enumerate(activeMenuActionNameItemObjectPairs)
         }
-        activeMenuActions = activeMenuActionNameMap.values()
+        activeMenuActions = list(activeMenuActionNameMap.values())
+
         activeMenu = menu
 
     def pushMenu(menu):
@@ -405,6 +513,7 @@ def runMenu(args, parser):
 
     while True:
         inspecting = False
+        searchingGameAssets = False
         creatingAttachments = False
         extractingAttachments = False
         renaingAttachmentFiles = False
@@ -463,14 +572,14 @@ def runMenu(args, parser):
                     help = 'show help page'
                 elif actionName == 'version':
                     help = "show version"
-                elif actionName == 'activeModConfig':
+                elif actionName == 'modConfig':
                     value = getActiveModConfigStr()
                     if True:
                         help = 'the mod config to install'
                 elif actionName == 'settingsFile':
                     value = getSettingsFileStr()
                     help = 'the active settings file'
-                elif actionName == 'launcher':
+                elif actionName == 'launch':
                     help = f'enter launcher menu{" and start game" if launcherStartsGame else ""}'
                 elif actionName == 'quit':
                     # TODO: remove
@@ -496,6 +605,8 @@ def runMenu(args, parser):
                         help = 'overwrite existing files'
                 elif actionName == 'gameDir':
                     value = getGameDirStr()
+                elif actionName == 'gameVersion':
+                    value = getValueStr(gameVersion)
                 elif actionName == 'pakingDir':
                     value = getPakingDirStr()
                 elif actionName == 'attachmentsDir':
@@ -508,6 +619,10 @@ def runMenu(args, parser):
                     value = getUassetGuiPathStr()
                 elif actionName == 'unrealPakPath':
                     value = getUnrealPakPathStr()
+                elif actionName == 'sigFile':
+                    value = getSigFilePathStr()
+                elif actionName == 'umodelPath':
+                    value = getUmodelPathStr()
                 elif actionName == 'moreOptions':
                     help = 'more options and settings'
                 elif actionName == 'folders':
@@ -524,9 +639,12 @@ def runMenu(args, parser):
                     help = f'open settings in editor'
                 elif actionName == 'results':
                     help = f'open command results in editor'
+                elif actionName == 'sockets':
+                    help = 'find, create, and extract socket attachment definitions'
 
                 if not menuItemObject.get('hidden', False):
-                    sprint(f"[ {action['number']} ] {actionName[0].upper()}{actionName[1:]}{f' [{value}]' if value else ''}{f' - {help}' if help else ''}")
+                    valueStr = ('{' + value + '}') if value else ''
+                    sprint(f"[ {action['number']} ] {actionName[0].upper()}{actionName[1:]}{f' {valueStr}' if valueStr else ''}{f' - {help}' if help else ''}")
             sprintPad()
 
         if menuSettingsDirty:
@@ -573,9 +691,9 @@ def runMenu(args, parser):
                 sprintPad()
 
             if ambiguousMap:
-                for token, actionNames in ambiguousMap.items():
+                for token, matchingItems in ambiguousMap.items():
                     sprintPad()
-                    reportAmbigous(token, actionNames)
+                    reportAmbigous(token, matchingItems)
                     sprintPad()
 
             actions = []
@@ -586,10 +704,11 @@ def runMenu(args, parser):
 
             actionNamesRemaining = {action['name'] for action in actions}
 
-            def popAction(actionName):
-                if actionName in actionNamesRemaining:
-                    actionNamesRemaining.remove(actionName)
-                    return actionName
+            def popAction(*actionNames):
+                for actionName in actionNames:
+                    if actionName in actionNamesRemaining:
+                        actionNamesRemaining.remove(actionName)
+                        return actionName
 
             def popOpenPathAction(actionName, description, path, isDir=True):
                 nonlocal shouldPromptToContinue
@@ -743,6 +862,30 @@ def runMenu(args, parser):
                     menuSettingsDirty = True
                 shouldPromptToContinue = True
 
+            if popAction('gameVersion'):
+                prepActionRun()
+                value = sprintput(f'Game version: ').strip() or None
+
+                if value:
+                    if value not in KnownSupportedGameVersions:
+                        sprintPad()
+                        sprint(f'Warning: not in the list of known supported versions ({", ".join(KnownSupportedGameVersions)})')
+                        sprintSeparator()
+
+                if value != gameVersion:
+                    gameVersion = value
+                    sprintPad()
+                    sprint(f'Game version set to: {getValueStr(gameVersion)}')
+                else:
+                    sprintPad()
+                    sprint(f'Game version unchanged: {getValueStr(gameVersion)}')
+
+                if gameVersion != menuSettings.get('gameVersion', None):
+                    menuSettings['gameVersion'] = gameVersion
+                    menuSettingsDirty = True
+
+                shouldPromptToContinue = True
+
             if popAction('pakingDir'):
                 prepActionRun()
                 sprint('Opening file browser...')
@@ -751,7 +894,8 @@ def runMenu(args, parser):
                     title='Select Paking Folder',
                     initialDir=pakingDir if (pakingDir and os.path.isdir(pakingDir)) else os.getcwd(),
                 ) or '')['best'])
-                if not dirPath:
+
+                if not dirPath and False:
                     dirPath = DefaultPakingDir
                     sprintPad()
                     sprint(f'(using default)')
@@ -777,7 +921,8 @@ def runMenu(args, parser):
                     title='Select Attachments Folder',
                     initialDir=attachmentsDir if (attachmentsDir and os.path.isdir(attachmentsDir)) else os.getcwd(),
                 ) or '')['best'])
-                if not dirPath:
+
+                if not dirPath and False:
                     dirPath = DefaultAttachmentsDir
                     sprintPad()
                     sprint(f'(using default)')
@@ -855,7 +1000,49 @@ def runMenu(args, parser):
                     menuSettingsDirty = True
                 shouldPromptToContinue = True
 
-            if popAction('activeModConfig'):
+            if popAction('sigFile'):
+                prepActionRun()
+                sprint('Opening file browser...')
+                sprintPad()
+                filePath = handleFileChooserResult(sigFilePath, 'sig file', getPathInfo(getFile(
+                    title=f'Select Sig File',
+                    initialDir=os.path.dirname(sigFilePath) if sigFilePath else os.getcwd(),
+                    initialFile=sigFilePath or None,
+                    fileTypes=[('Sig', '.sig')],
+                    mustExist=True,
+                ) or '')['best'])
+                if sigFilePath != filePath:
+                    sigFilePath = filePath
+                    sprint(f'sig file path set to: {getSigFilePathStr(shorten=False)}')
+                else:
+                    sprint(f'sig file path unchanged: {getSigFilePathStr(shorten=False)}')
+                if sigFilePath != menuSettings.get('sigFilePath', None):
+                    menuSettings['sigFilePath'] = sigFilePath
+                    menuSettingsDirty = True
+                shouldPromptToContinue = True
+
+            if popAction('umodelPath'):
+                prepActionRun()
+                sprint('Opening file browser...')
+                sprintPad()
+                filePath = handleFileChooserResult(umodelPath, UnrealPakProgramStem, getPathInfo(getFile(
+                    title=f'Select {UmodelProgramStem} Program',
+                    initialDir=os.path.dirname(umodelPath) if umodelPath else os.getcwd(),
+                    initialFile=umodelPath or None,
+                    fileTypes=[('Programs', '.exe')],
+                    mustExist=True,
+                ) or '')['best'])
+                if umodelPath != filePath:
+                    umodelPath = filePath
+                    sprint(f'{UmodelProgramStem} path set to: {getUmodelPathStr(shorten=False)}')
+                else:
+                    sprint(f'{UmodelProgramStem} path unchanged: {getUmodelPathStr(shorten=False)}')
+                if umodelPath != menuSettings.get('umodelPath', None):
+                    menuSettings['umodelPath'] = umodelPath
+                    menuSettingsDirty = True
+                shouldPromptToContinue = True
+
+            if popAction('modConfig'):
                 prepActionRun()
                 modConfigNames = (settings.get('modConfigs', {}).keys())
                 sprint(f'Available mod configs ({len(modConfigNames)}): ')
@@ -913,11 +1100,14 @@ def runMenu(args, parser):
             if popAction('install'):
                 installingMods = True
                 shouldRunMain = True
-            if popAction('launcher'):
+            if popAction('launch'):
                 openingGameLauncher = True
                 shouldRunMain = True
             if popAction('kill'):
                 killingGame = True
+                shouldRunMain = True
+            if popAction('search'):
+                searchingGameAssets = True
                 shouldRunMain = True
 
             if popAction('edit'):
@@ -976,13 +1166,13 @@ def runMenu(args, parser):
                     overwriteOverride = None
                 else:
                     overwriteOverride = True
-                sprint(f"Switched overwrite mode to `{getOverwriteModeStr()}``")
+                sprint(f"Switched overwrite mode to `{getOverwriteModeStr()}`")
                 sprintPad()
                 menuSettings['overwriteOverride'] = overwriteOverride
                 menuSettingsDirty = True
                 shouldPromptToContinue = shouldPromptToContinueForSettings
 
-            if popAction('autoLaunch'):
+            if popAction('autoLaunch', 'auto'):
                 prepActionRun()
                 launcherStartsGame = not launcherStartsGame
                 sprint(f"Turned auto launch flag {getOnOrOffStr(launcherStartsGame)}")
@@ -994,15 +1184,19 @@ def runMenu(args, parser):
             if shouldRunMain:
                 prepActionRun()
                 sprintPad()
-                exitCode = runCommand(
+                runner = DbdModSwapCommandRunner()
+                exitCode = runner.runCommand(
                     fromMenu=True,
                     settingsFilePath=settingsFilePath,
                     gameDir=gameDir,
+                    gameVersion=gameVersion,
                     pakingDir=pakingDir,
                     attachmentsDir=attachmentsDir,
                     unrealProjectDir=unrealProjectDir,
                     uassetGuiPath=uassetGuiPath,
                     unrealPakPath=unrealPakPath,
+                    sigFilePath=sigFilePath,
+                    umodelPath=umodelPath,
                     activeModConfigName=activeModConfigName,
                     inspecting=inspecting,
                     creatingAttachments=creatingAttachments,
@@ -1014,6 +1208,7 @@ def runMenu(args, parser):
                     openingGameLauncher=openingGameLauncher,
                     launcherStartsGame=launcherStartsGame,
                     killingGame=killingGame,
+                    searchingGameAssets=searchingGameAssets,
                     nonInteractive=False,
                     debug=debug,
                     dryRun=dryRun,

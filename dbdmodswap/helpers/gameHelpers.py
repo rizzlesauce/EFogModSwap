@@ -2,21 +2,31 @@ import os
 import shutil
 from re import sub
 
-from dbdmodswap.helpers.windowsHelpers import getCheckTaskRunningCommand
 from dbdmodswap.metadata.programMetaData import ProgramName
 
 from .pathHelpers import normPath
 from .tempFileHelpers import openTemporaryFile
-from .windowsHelpers import (checkTaskRunning, getIsRunningAsAdmin,
-                             getPowershellCommand, getStartCommand,
-                             getTaskKillCommand, taskKill)
+from .windowsHelpers import (checkTaskRunning, getCheckTaskRunningCommand,
+                             getIsRunningAsAdmin, getPowershellCommand,
+                             getStartCommand, getTaskKillCommand, taskKill)
 
+KnownSupportedGameVersions = [
+    '4.4.2',
+    '6.5.2',
+]
 DefaultLauncherRelPath = '4.4.2 Launcher.bat'
 DefaultGameName = 'DeadByDaylight'
 DefaultGameBinariesRelDir = os.path.join(DefaultGameName, 'Binaries', 'Win64')
 DefaultGameServerProgramName = 'Server.exe'
 DefaultGameProgramName = f'{DefaultGameName}-Win64-Shipping.exe'
 DefaultGameLobbyProgramName = 'steam_lobby.exe'
+
+
+def getGameUnrealEngineVersion(gameVersion):
+    if gameVersion == '4.4.2':
+        return '4.25'
+    if gameVersion == '6.5.2':
+        return '4.27'
 
 
 def getGamePaksDir(gameDir, gameName):
@@ -47,7 +57,13 @@ def killGame():
     return taskKill(DefaultGameProgramName)
 
 
-def getLauncherBatchFileContent(usingStandaloneExitOption=None, usingOriginalBehavior=False, isAdmin=False):
+def getLauncherBatchFileContent(
+    usingStandaloneExitOption=None,
+    usingOriginalBehavior=False,
+    isAdmin=False,
+    usingServer=None,
+    gameVersion=None,
+):
     cols, rows = shutil.get_terminal_size()
 
     if usingStandaloneExitOption is None:
@@ -56,6 +72,11 @@ def getLauncherBatchFileContent(usingStandaloneExitOption=None, usingOriginalBeh
     usingOriginalCls = usingOriginalBehavior
     usingOriginalPause = usingOriginalBehavior
     usingPageClearCls = False
+    if usingServer is None:
+        usingServer = gameVersion != '6.5.2'
+
+    if gameVersion is None:
+        gameVersion = '4.4.2' if usingServer else '6.5.2'
 
     def formatLines(lines, indent=0, keepEmpty=False, linesOnly=False):
         indentedLines = [f"{'    ' * indent}{line}" for line in lines if line or keepEmpty]
@@ -192,7 +213,7 @@ def getLauncherBatchFileContent(usingStandaloneExitOption=None, usingOriginalBeh
     result = (
 f'''@echo off
 setlocal enabledelayedexpansion
-title 4.4.2 Launcher - By Smirkzyy and Merky and Ross
+title {gameVersion} Launcher - By Smirkzyy and Merky and Ross
 cd /d "{DefaultGameBinariesRelDir}{os.path.sep * 2}"
 set "originalDir=%cd%"
 set prevContent=0
@@ -206,7 +227,7 @@ if %launchNow%==1 (
     echo Launcher
     set prevContent=1
     set launchNow=0
-    goto :launch
+    goto :{"launch" if usingServer else "launchdbd"}
 )
 
 :main
@@ -217,7 +238,7 @@ set prevContent=1
 {clearScreen()}
 echo Launcher Main Menu
 echo.
-echo [1] Launch 4.4.2
+echo [1] Launch {gameVersion}
 echo [2] Join Public Lobby (Survivors Only)
 echo [3] Custom Lobby
 echo.
@@ -229,7 +250,7 @@ echo [6] Open Config Folder
 echo [7] {"Exit" if usingOriginalBehavior else "Quit" if usingStandaloneExitOption else f"Back to {ProgramName}"}
 echo.
 set /p op="Selection: "
-{actionIf("goto :launch", ['1', 'launch', 'launc', 'laun', 'lau', 'la', 'l', 'lnch', 'ln', 'lnc'])}
+{actionIf(f"goto :{'launch' if usingServer else 'launchdbd'}", ['1', 'launch', 'launc', 'laun', 'lau', 'la', 'l', 'lnch', 'ln', 'lnc'])}
 {actionIf("goto :join", ['2', 'j', 'pubs', 'pub', 'join', 'joi', 'jo', 'jn', 'lobby'])}
 {actionIf("goto :customLobby", ['3', 'cust', 'custs', 'customs', 'custom lobby', 'customLobby', 'custom'])}
 {actionIf("goto :openPaks", ['4', 'pak', 'pk', 'pks', 'paks', 'openPaks', 'open paks'])}
@@ -285,7 +306,7 @@ goto :main
 
 :join
 {clearScreen(soft=True)}
-{startGameLobby('Starting 4.4.2 lobby...', subTitle='Public', failGoto='main')}
+{startGameLobby(f'Starting {gameVersion} lobby...', subTitle='Public', failGoto='main')}
 goto :main
 
 
@@ -319,7 +340,7 @@ IF EXIST "%configPath%" (
 ) else (
     echo.
 {clearScreen(active=False, indent=1)}
-    echo ERROR: Config folder does not exist. Please launch 4.4.2 at least once to create it.
+    echo ERROR: Config folder does not exist. Please launch {gameVersion} at least once to create it.
 {pause(invalidInput=True, wait=True, indent=1)}
 )
 goto :main
@@ -438,19 +459,31 @@ goto :killer'''
     return result
 
 
-def openGameLauncher(gameDir, startGame=False, usingExternalLauncher=False, fromMenu=False):
+def openGameLauncher(
+    gameDir,
+    startGame=False,
+    usingExternalLauncher=False,
+    fromMenu=False,
+    usingServer=None,
+    gameVersion=None,
+):
     def runLauncherBatchScript(launcherPath):
         assert launcherPath
         return os.system(f'cd "{gameDir}" && "{launcherPath}"{" launch" if startGame else ""}')
 
     if usingExternalLauncher:
+        # TODO: be able to use custom launcher path
         return runLauncherBatchScript(os.path.join(gameDir, DefaultLauncherRelPath))
 
-    with openTemporaryFile(dir=gameDir, prefix=f'{ProgramName}_Launcher_', suffix='.bat', mode='w') as file:
+    with openTemporaryFile(dir=gameDir, prefix=f'{ProgramName}_Launcher_', suffix='.bat', mode='w', encoding='utf-8') as file:
         # TODO: remove
         if False:
             print(getLauncherBatchFileContent())
         else:
-            file.write(getLauncherBatchFileContent(usingStandaloneExitOption=not fromMenu or None))
+            file.write(getLauncherBatchFileContent(
+                usingStandaloneExitOption=not fromMenu or None,
+                usingServer=usingServer,
+                gameVersion=gameVersion,
+            ))
             file.close()
             return runLauncherBatchScript(file.name)

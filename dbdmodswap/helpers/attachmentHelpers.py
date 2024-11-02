@@ -83,4 +83,4 @@ def getAttachmentFilename(attachmentId):
     return f'SocketAttachment_{attachmentId}.yaml'
 
 def getAttachmentDisplayName(attachment):
-    return attachment['displayName'] or attachment['attachmentId']
+    return attachment['displayName'] if 'displayName' in attachment else attachment['attachmentId']

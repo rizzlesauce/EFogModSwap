@@ -1,31 +1,16 @@
-import os
-
-from dbdmodswap.metadata.programMetaData import ProgramName
-
-from .consoleHelpers import sprint, sprintP, sprintPad
-from .pathHelpers import getPathInfo, normPath
-from .processHelpers import runCall
-from .tempFileHelpers import openTemporaryFile
+from .consoleHelpers import sprint
+from .processHelpers import runCommand
 
 UmodelProgramStem = 'umodel'
 UmodelProgramFilename = f'{UmodelProgramStem}.exe'
+UmodelSaveFolderName = 'UmodelSaved'
 
-def umodelExport(pakPath, destDir, gameName, unrealPakPath):
-    # TODO: get this working using umodel
-    pakPathInfo = getPathInfo(pakPath)
-    programPathInfo = getPathInfo(unrealPakPath)
-    programFilename = programPathInfo['basename']
-    programPath = normPath(os.path.join(programPathInfo['dir'], programFilename))
-    destDirPathInfo = getPathInfo(destDir)
-    actualDestDir = ''
-    if not os.path.exists(actualDestDir):
-        os.makedirs(actualDestDir, exist_ok=True)
-    args = [
-        programPath,
-        pakPathInfo['absolute'],
-        '-extract',
-        actualDestDir,
-        # TODO: remove - doesn't seem to be needed
-        #'-extracttomountpoint',
-    ]
-    runCall(args, cwd=programPathInfo['dir'])
+def runUmodelCommand(umodelPath, args, cwd=None, debug=False):
+    if debug:
+        allArgs = [umodelPath, *args]
+        quoted = [f'"{arg}"' for arg in allArgs]
+        sprint(f'cd "{cwd or "."}"')
+        sprint(f"& {' '.join(quoted)}")
+
+    for value in runCommand(umodelPath, args, cwd=cwd):
+        yield value

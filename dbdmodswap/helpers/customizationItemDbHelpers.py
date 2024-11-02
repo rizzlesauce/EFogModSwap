@@ -1,13 +1,22 @@
 import hashlib
 import secrets
 
-from .uassetHelpers import (ItemTypeName, NameFieldName, findNextItemByFields,
-                            findStructByType, getPropertyValue)
+from .uassetHelpers import (ArrayPropertyDataType, IntPropertyDataType,
+                            ItemTypeName, NameFieldName, NamePropertyDataType,
+                            SoftObjectPropertyDataType, StringPropertyDataType,
+                            TextPropertyDataType, ValueFieldName,
+                            findNextItemByFields, findStructByType,
+                            getPropertyValue)
 
 CustomizationItemDbAssetName = 'CustomizationItemDB'
 ECustomizationCategoryName = 'ECustomizationCategory'
 ECustomizationCategoryNamePrefix = f'{ECustomizationCategoryName}::'
 ModelDisplayNamePropNameFieldName = 'CultureInvariantString'
+AssetPathFieldName = 'AssetPath'
+AssetNameFieldName = 'AssetName'
+NameMapFieldName = 'NameMap'
+AttachmentBlueprintName = 'AttachementBlueprint'
+AccessoryBlueprintName = 'AccessoryBlueprint'
 
 def generateRandomHexString(length):
     return secrets.token_hex(length // 2)
@@ -21,6 +30,28 @@ def sha256Hash(string):
     return hashlib.sha256(string.encode()).hexdigest()[:32]
 
 
+def convertNone(value):
+    if value == 'None':
+        value = None
+    return value
+
+
+def getAssetPathProperty(assetProperty):
+    return (assetProperty or {}).get(AssetPathFieldName, None)
+
+
+def getPathPropertyPath(pathProperty):
+    return (pathProperty or {}).get(AssetNameFieldName, None)
+
+
+def getAssetPath(assetProperty):
+    return convertNone(
+        getPathPropertyPath(
+            getAssetPathProperty(assetProperty),
+        ),
+    )
+
+
 def getModelName(model):
     return model[NameFieldName]
 
@@ -29,7 +60,7 @@ def setModelName(model, name):
     model[NameFieldName] = name
 
 
-def getModelIdProperty(modelValues):
+def getModelIdProperty(modelValues, gameVersion):
     return findNextItemByFields(
         modelValues,
         [
@@ -37,9 +68,45 @@ def getModelIdProperty(modelValues):
             NameFieldName,
         ],
         [
-            'UAssetAPI.PropertyTypes.Objects.NamePropertyData, UAssetAPI',
+            StringPropertyDataType if gameVersion == '6.5.2' else NamePropertyDataType,
             'ID',
         ]
+    )
+
+
+def getItemMeshProperty(modelValues):
+    return findNextItemByFields(
+        modelValues,
+        [
+            ItemTypeName,
+            NameFieldName,
+        ],
+        [
+            SoftObjectPropertyDataType,
+            'ItemMesh',
+        ]
+    )
+
+
+def getAssociatedCharacterProperty(modelValues):
+    return findNextItemByFields(
+        modelValues,
+        [
+            ItemTypeName,
+            NameFieldName,
+        ],
+        [
+            IntPropertyDataType,
+            'AssociatedCharacter',
+        ]
+    )
+
+
+def getAssociatedCharacterId(modelValues):
+    return convertNone(
+        getPropertyValue(
+            getAssociatedCharacterProperty(modelValues),
+        ),
     )
 
 
@@ -52,7 +119,7 @@ def findSocketAttachmentsStruct(modelValues):
             NameFieldName,
         ],
         [
-            'UAssetAPI.PropertyTypes.Objects.ArrayPropertyData, UAssetAPI',
+            ArrayPropertyDataType,
             'StructProperty',
             'SocketAttachements',
         ],
@@ -61,6 +128,68 @@ def findSocketAttachmentsStruct(modelValues):
 
 def getSocketAttachments(modelValues):
     return getPropertyValue(findSocketAttachmentsStruct(modelValues))
+
+
+def getAttachmentSocketName(attachmentValues):
+    return convertNone(
+        getPropertyValue(
+            findNextItemByFields(
+                attachmentValues,
+                [
+                    ItemTypeName,
+                    NameFieldName,
+                ],
+                [
+                    NamePropertyDataType,
+                    'SocketName',
+                ]
+            ),
+        ),
+    )
+
+
+def getAttachmentBlueprintProperty(attachmentValues, gameVersion):
+    return findNextItemByFields(
+        attachmentValues,
+        [
+            ItemTypeName,
+            NameFieldName,
+        ],
+        [
+            SoftObjectPropertyDataType,
+            AccessoryBlueprintName if gameVersion == '6.5.2' else AttachmentBlueprintName,
+        ]
+    )
+
+
+def getAttachmentBlueprintPath(attachmentValues, gameVersion):
+    return convertNone(
+        getAssetPath(
+            getPropertyValue(
+                getAttachmentBlueprintProperty(attachmentValues, gameVersion),
+            ),
+        ),
+    )
+
+
+def getAttachmentSkeletalMeshPath(attachmentValues):
+    return convertNone(
+        getAssetPath(
+            getPropertyValue(
+                findNextItemByFields(
+                    attachmentValues,
+                    [
+                        ItemTypeName,
+                        NameFieldName,
+                    ],
+                    [
+                        SoftObjectPropertyDataType,
+                        'SkeletalMesh',
+                    ]
+                ),
+            ),
+        ),
+    )
 
 
 def findUiDataStruct(modelValues):
@@ -79,7 +208,7 @@ def getModelDisplayNameProperty(uiDataValues):
             NameFieldName,
         ],
         [
-            'UAssetAPI.PropertyTypes.Objects.TextPropertyData, UAssetAPI',
+            TextPropertyDataType,
             'DisplayName',
         ]
     )
@@ -125,10 +254,10 @@ def addAllToNameMap(value, nameMapSet, path=''):
                 }:
                     continue
 
-                if k == 'Value':
+                if k == ValueFieldName:
                     if itemType in {
                         'UAssetAPI.PropertyTypes.Objects.StrPropertyData, UAssetAPI',
-                        'UAssetAPI.PropertyTypes.Objects.TextPropertyData, UAssetAPI',
+                        TextPropertyDataType,
                     }:
                         continue
 
@@ -140,7 +269,7 @@ def addAllToNameMap(value, nameMapSet, path=''):
                 }:
                     continue
 
-                if k == 'AssetName':
+                if k == AssetNameFieldName:
                     pathParts = v.split('.')
                     path = ''
                     for pathPart in pathParts:

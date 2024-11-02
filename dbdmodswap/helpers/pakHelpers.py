@@ -15,6 +15,7 @@ UnrealPakProgramFilename = f'{UnrealPakProgramStem}.exe'
 
 PakchunkFilenamePrefix = 'pakchunk'
 PakchunkFilenameSuffix = '.pak'
+PakchunkSigFilenameSuffix = '.sig'
 
 pakchunkRefnameRegexCompiled = None
 
@@ -36,7 +37,7 @@ def getPakchunkRefnameRegex():
                     r'(?P<platformSuffix>\w(\w|\.\w)*?)'
                 r')?'
             r')?'
-            r'(?P<suffix>.pak)?'
+            r'(?P<suffix>.(pak|sig))?'
             r'$',
             re.IGNORECASE,
         )
@@ -91,7 +92,14 @@ def pakchunkRefnameToFilename(refname, addPrefix=True, addPlatform=True, default
         )
 
 
-def unrealPak(pakDir, destPakPath, unrealPakPath, compress=True, debug=False):
+def pakchunkToSigFilePath(path):
+    if path.lower().endswith(PakchunkFilenameSuffix):
+        path = path[:-len(PakchunkFilenameSuffix)]
+
+    return f'{path}{PakchunkSigFilenameSuffix}'
+
+
+def unrealPak(pakDir, destPakPath, unrealPakPath, compress=True, debug=False, extraCompressionSettings=True):
     pakDirPathInfo = getPathInfo(pakDir)
     responseFileContent = f'"{pakDirPathInfo["absolute"]}\*.*" "..\..\..\*.*" '
     if debug:
@@ -123,6 +131,14 @@ def unrealPak(pakDir, destPakPath, unrealPakPath, compress=True, debug=False):
         if compress:
             args.append('-compress')
 
+            if extraCompressionSettings:
+                args.append('-asynccompression')
+                args.append('-compressionformat=Oodle')
+                args.append('-compressmethod=Leviathan')
+                args.append('-compresslevel=6')
+                args.append('-compressionblocksize=256KB')
+                args.append('-multiprocess')
+
         if debug:
             sprintPad()
             sprintP(args)
@@ -140,14 +156,15 @@ def unrealPak(pakDir, destPakPath, unrealPakPath, compress=True, debug=False):
             suffix='.txt',
             mode='w',
             dir=programPathInfo['dir'],
+            encoding='utf-8',
         ) as file:
             runCommand(file)
     else:
         responseFilePath = normPath(os.path.join(programPathInfo['dir'], f'{fileStem}.txt'))
-        with open(responseFilePath, 'w') as file:
+        with open(responseFilePath, 'w', encoding='utf-8') as file:
             runCommand(file)
 
-    # TODO: do we need to use gamepath.txt or do anything with *.sig files?
+    # TODO: do we need to use gamepath.txt or do anything with *.sig files here?
 
     return responseFilePath
 

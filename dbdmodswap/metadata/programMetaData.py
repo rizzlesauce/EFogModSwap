@@ -1,4 +1,6 @@
 ProgramName = 'DbdModSwap'
 ProgramFilename = f'{ProgramName}.exe'
-Version = '0.2.2'
+Version = '0.3.0'
+Author = 'Ross Adamson'
+License = 'MIT'
 ConsoleTitle = f'{ProgramName} - By Ross'

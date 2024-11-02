@@ -6,6 +6,10 @@ import win32con
 import win32gui
 
 
+def getForegroundWindow():
+    return win32gui.GetForegroundWindow()
+
+
 def setWindowFocus(hwnd):
     if hwnd:
         win32gui.ShowWindow(hwnd, win32con.SW_SHOW)

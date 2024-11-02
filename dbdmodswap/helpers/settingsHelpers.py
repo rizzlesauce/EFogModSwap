@@ -3,9 +3,11 @@ import os
 from dbdmodswap.metadata.programMetaData import ProgramName, Version
 
 from .customizationItemDbHelpers import CustomizationItemDbAssetName
+from .gameHelpers import getGameUnrealEngineVersion
 from .pakHelpers import UnrealPakProgramFilename, UnrealPakProgramStem
 from .pathHelpers import normPath
 from .uassetHelpers import UassetGuiProgramFilename, UassetGuiProgramStem
+from .umodelHelpers import UmodelProgramFilename, UmodelProgramStem
 from .unrealEngineHelpers import UassetFilenameSuffix
 
 DefaultSettingsFileStem = 'settings'
@@ -13,6 +15,7 @@ DefaultSettingsPath = f'{DefaultSettingsFileStem}.yaml'
 DefaultCustomizationItemDbPath = f'{CustomizationItemDbAssetName}{UassetFilenameSuffix}'
 DefaultAttachmentsDir = 'attachments'
 DefaultPakingDir = 'paking'
+DefaultGameVersion = '4.4.2'
 
 def getSettingsTemplate(**kwargs):
     return (
@@ -41,6 +44,19 @@ f'''# {ProgramName} {Version} settings.
     f'uassetGuiPath: {kwargs["uassetGuiPath"]}' if kwargs.get('uassetGuiPath', None)
     else f'#uassetGuiPath: C:/ModTools/{UassetGuiProgramStem}/{UassetGuiProgramFilename}'
 }
+{
+    f'umodelPath: {kwargs["umodelPath"]}' if kwargs.get('umodelPath', None)
+    else f'#umodelPath: C:/ModTools/{UmodelProgramStem}/{UmodelProgramFilename}'
+}
+
+# If your game requires a sig file for each pakchunk, set the path to the sig file here
+{
+    f'sigFilePath: {kwargs["sigFilePath"]}' if kwargs.get('sigFilePath', None)
+    else f'#sigFilePath: C:/ModTools/{UnrealPakProgramStem}/Resources/copy.sig'
+}
+
+# If omitted, {ProgramName} will detect this based on the `gameVersion` (if it recognizes the game version)
+#unrealEngineVersion: '{kwargs.get('unrealEngineVersion', None) or getGameUnrealEngineVersion(kwargs.get('gameVersion', None) or DefaultGameVersion)}'
 
 ## Staging and storage folders
 
@@ -48,14 +64,14 @@ f'''# {ProgramName} {Version} settings.
 # This folder will be created if it doesn't already exist.
 {
     f'pakingDir: {kwargs["pakingDir"]}' if kwargs.get('pakingDir', None)
-    else 'pakingDir: paking'
+    else f"pakingDir: {DefaultPakingDir}-{kwargs.get('gameVersion', None) or DefaultGameVersion}"
 }
 
 # The folder used for storing socket attachment definition yaml files.
 # This folder will be created if it doesn't already exist.
 {
     f'attachmentsDir: {kwargs["attachmentsDir"]}' if kwargs.get('attachmentsDir', None)
-    else 'attachmentsDir: attachments'
+    else f"attachmentsDir: {DefaultAttachmentsDir}-{kwargs.get('gameVersion', None) or DefaultGameVersion}"
 }
 
 ## Game paths
@@ -68,6 +84,9 @@ f'''# {ProgramName} {Version} settings.
 
 # Top level folder within pakchunks and projects containing game files and cooked content.
 gameName: DeadByDaylight
+
+# Game version.
+gameVersion: '{kwargs.get('gameVersion', None) or DefaultGameVersion}'
 
 ## Mod configurations
 
@@ -167,6 +186,13 @@ reservedPakchunks:
 # Path to a pakchunk pak or folder if you want to use cooked assets from there.
 # This takes precedence over `unrealProjectDir`.
 #srcPakPath: C:/ModTools/UnrealPak/pakchunk4321-WindowsNoEditor
+
+# Path to cooked assets outside of a pakchunk or unreal project. {ProgramName} will generate
+# new asset files here when copying attachment blueprints to make new attachments.
+{
+    f'extraContentDir: {kwargs["extraContentDir"]}' if kwargs.get('extraContentDir', None)
+    else f"extraContentDir: assets-{kwargs.get('gameVersion', None) or DefaultGameVersion}"
+}
 
 # Path to {CustomizationItemDbAssetName} if mixing or manipulating custom slots.
 # This can be either a UASSET file, or a JSON file saved from {UassetGuiProgramStem}.
@@ -268,7 +294,8 @@ attachmentConflicts:
 # in the target {CustomizationItemDbAssetName}. Syntax is available here ('==' and ':') to restrict exclusions. Using
 # '==' after an attachment name means that it will skip the exact combination instead of
 # all supersets of the combination. Additionally, ending the line with ':' and one or more comma separated base model
-# names will limit the exclusion to those models only.
+# names will limit the exclusion to those models only. If you use '==' without an attachment name, it will exclude
+# the base model (the model with no attachments) from the resulting custom slots.
 combosToSkip:
   SurvivorLegs:
   # remove long chains for the lower waistline pants in some legs variants
@@ -291,9 +318,45 @@ combosToSkip:
     - KatePurpleHat
   # skip the exact variants that already exist in another DLC or in the original game
   - - KateBikerJacketDanglingGloves==:KateBikerVariantsReadyToRide
+  # exclude base model (it's already included in the game; or, the base model needs a certain attachment to look right)
+  - - ==:KateDefault
+  # this base model is incomplete without the KateBouncingBellyTorso attachment, so exclude it on its own
+  - - ==:KatePregnant
   # (optional - can comment these out) remove double necklaces
   - - KateBlueGemNecklace
     - KateGoldNecklaceNoRing
+
+# Require some attachment combinations - if a combination doesn't include these combinations, exclude it.
+# This can be helpful for making sure an essential attachment for a model is present in every custom slot.
+combosRequired:
+  SurvivorTorso:
+  # this base mode is incomplete without this attachment, so always include it
+  - - KateBouncingBellyTorso:KatePregnant
+
+## Game asset searching parameters
+
+# These are all optional properties and you can comment out any that you don't need.
+
+# Asset path search terms
+#searchAssetNameMatchers:
+# looking for blueprints
+#- blu
+#- ab_
+#- bp_
+
+# Look for assets that include these search terms in their name map entries
+#searchNameMapNameMatchers:
+#- AnimBlueprintGeneratedClass
+#- PerBoneBlendWeight
+
+# Whether to search CustomizationItemDB assets for models and attachments
+searchingSlots: true
+
+# Continue where you left off in a previous search.
+#searchResume:
+#  pakchunkRelStemPath: pakchunk14-WindowsNoEditor
+#  assetPath: Characters/Campers/Finland/Models/Heads/ACC/Blueprints/AB_FS_Hat_ACC006
+
 '''
   )
 
@@ -305,15 +368,18 @@ def getContentDirRelativePath(path):
 
 
 def isValidSettingsFilename(filename):
+  filenameLower = filename.lower()
   return (
+      filenameLower.endswith('.yaml')
       # TODO: remove
-      (True or filename.lower().startswith(DefaultSettingsFileStem))
-      and not filename.lower().startswith('.')
-      and filename.lower().endswith('.yaml')
-      and f'_{CustomizationItemDbAssetName}'.lower() not in filename.lower()
-      and not filename.lower().endswith('-results.yaml')
-      and not filename.lower().endswith('-altered.yaml')
-      and not filename.lower().endswith('-unaltered.yaml')
+      and (True or filenameLower.startswith(DefaultSettingsFileStem))
+      and not filename.startswith('.')
+      and f'_{CustomizationItemDbAssetName}' not in filename
+      and not filename.startswith('searchAssetMatches-')
+      and not filename.startswith('searchNameMapMatches-')
+      and not filename.endswith('-results.yaml')
+      and not filename.endswith('-altered.yaml')
+      and not filename.endswith('-unaltered.yaml')
   )
 
 

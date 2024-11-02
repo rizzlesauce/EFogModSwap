@@ -39,10 +39,10 @@ you want to call it).
 Run `DbdModSwap.exe` with no arguments (or double click on it from file explorer) to enter the
 interactive menu.
 
-### Configure game folder
+### Configure game folder and version
 
 Configure the path to your game folder by selecting `MoreOptions`, `GameDir` and choosing the
-folder in the file browser that opens.
+folder in the file browser that opens. From the same menu, select the `GameVersion`.
 
 ### Configure paking folder
 
@@ -54,10 +54,11 @@ or use the default. To change this folder, select `MoreOptions`, `PakingDir`.
 Then, run `List` to generate a settings file and get info on your current configuration. The
 settings file comes with inline documentation to describe each setting.
 
-### Configure auto launch
+### Toggle auto launch
 
 By default, when you enter the launcher menu, the game will automatically start. To prevent this,
-go to the submenu `MoreOptions` and toggle the `AutoLaunch` setting.
+go to the submenu `MoreOptions` and toggle the `AutoLaunch` setting. Running `auto` from the
+main menu is another quick way of toggling this behavior.
 
 ## Mod configurations
 
@@ -73,11 +74,13 @@ example, if you wanted to set the mod config, install it, and then launch the ga
 type `active install launch` in the main menu prompt, and that would chain together these
 actions.
 
-## Mod paking
+## Modding
+
+### Mod paking
 
 If you want to make pakchunks based on a list of cooked assets from an unreal engine project or
 another pakchunk, use the `Pak` action, and check out the settings related to paking, mainly:
-* `unrealPakPath` (you'll need `UnrealPak 4.25` for making and unpaking pakchunks)
+* `unrealPakPath` (you'll need `UnrealPak` for making and unpaking pakchunks)
 * `unrealProjectDir` (if you're paking content from a project)
 * `srcPakPath` (if you're paking content from an existing pakchunk)
 * `destPakNumber` (target pakchunk number)
@@ -89,10 +92,10 @@ will automatically be read from the source pakchunk filename. When you run `List
 the source pakchunk path, the tool will list out all the assets in the pakchunk to the results file,
 and you can copy and paste that into `destPakAssets` to include all those assets into the target pakchunk.
 
-## Socket attachment mixing
+### Mixing socket attachments
 
-Attachment mixing is all about accessorizing character models with new combinations of existing game
-attachments. So, let's say you want to put character A's backpack and character B's necklace on
+Attachment mixing is all about accessorizing character models with new combinations of accessories
+and model attachments. So, let's say you want to put character A's backpack and character B's necklace on
 character C - mixing can make that happen.
 
 Mixing works by modifying CustomizationItemDB assets (custom slots). Typically, you would have a different
@@ -102,29 +105,30 @@ without you having to make one in unreal engine. But for now, you'll need to use
 CustomizationItemDB from another mod or create one in unreal engine.
 
 For editing CustomizationItemDBs, you'll need [UAssetGUI](https://github.com/atenfyr/UAssetGUI). Put it
-anywhere you want and configure the setting `usasetGuiPath` to point to the EXE.
+anywhere you want and configure the setting `uassetGuiPath` to point to the EXE.
 
 Choose a cooked output folder (or, a pakchunk file or folder) containing a character model or socket attachment
 definitions you want to mix. It should contain a `CustomizationItemDB.uasset` file defining custom model slots.
 If you're wanting to mix a model from the pakchunk, the CustomizationItemDB will need to have a slot for that
-model with zero socket attachments. If it doesn't, one will need to be created in UE4 or edited to remove all
-the socket attachments using `UAssetGUI`.
+model with zero socket attachments. If it doesn't, one will need to be created or edited in UE4 or `UAssetGUI`
+to get a model slot with no attachments on it.
 
 You can either copy the `CustomizationItemDB.uasset` file to your DbdModSwap folder, or
 leave it where it is and configure a path to it in the settings.
 
 Edit the settings and ensure that `customizationItemDbPath` is pointing to the `CustomizationItemDB.uasset` file.
-This path can be absolute or a game content path relative to the unreal project or source pakchunk that
-starts with `/Content/`.
+This path can be absolute or a game content path (starts with `/Content/`) relative to the unreal project or
+source pakchunk.
 
 Run `List` and the tool will try to read the `CustomizationItemDB.uasset` and list out information regarding
 the included model slots and attachments.
 
-### Extracting attachments
+#### Extracting attachments
 
-If you want to extract socket attachment definitions from the data table, run `Extract`.
-By default, this will write any discovered attachment definitions to the `attachments` folder
-(you can configure this folder by editing the `attachmentsDir` setting).
+If you want to extract socket attachment definitions from CustomizationItemDB entries, run
+`Sockets`, `Extract` (pair this with `Search` if you want to search game pak files for
+attachments). By default, this will write any discovered attachment definitions to the `attachments`
+folder (you can configure this folder by editing the `attachmentsDir` setting).
 
 Edit each new attachment definition YAML file to ensure that `attachmentId`
 is globally unique (it should not duplicate any other attachment IDs in the game).
@@ -135,7 +139,7 @@ Some attachments might be duplicates of others, so just delete those.
 Once you're done editing the attachment definitions, run `Rename` to have the tool rename
 each attachment definition file in a standardized way to match its attachment ID.
 
-### Limiting attachment combinations
+#### Limiting attachment combinations
 
 By default, the tool will try to create every possible combination of attachments with the target
 models. If there are a lot of attachments, this can make an enormous amount of custom slots in the
@@ -153,16 +157,58 @@ the stored attachment definitions and your exclusion rules.
 After that, the altered `CustomizationItemDB.uasset` file can be packaged and installed using
 the tool.
 
-### Defining socket attachment interactively
-Another way you can add attachment definition files to your stack is by running `Create`. It will
-prompt you to enter an attachment name, display name, model category, and attachment
-blueprint game path (attachment blueprints can be discovered using UModel or similar tools).
-Then it creates a basic attachment definition. Assuming that the blueprint path is correct
-and that the attachment works on your target model, it should work in the game.
+#### Adding and cloning socket attachments interactively
+
+If you know the path to the attachment blueprint you want to use (using `Umodel`), you can run
+the `Sockets`, `Create` action to interactively add or clone an existing attachment to your stack.
+If you have `Umodel` and `UassetGUI` configured, it will give you more info on the attachment,
+display the attachment in a 3D viewer, and ask you if you want to copy the attachment to a new
+blueprint.
+
+It will prompt you to enter an attachment ID, display name, and model category.
+Then it creates an attachment definition that can be used for mixing with base models into
+attachment combination slots.
+
+##### Cloning attachments to create models with bone physics
+
+Copying an attachment to a new blueprint is how you can create new attachments with
+custom meshes, skeletons, and bone physics, which can be used to replace entire character
+models while still being compatible with the game's character animations.
+
+Once you've copied an attachment blueprint, you can set up your mesh, skeleton, and physics
+assets in Unreal Engine with the paths you specified when copying the blueprint using `Create`.
+* for the attachment mesh, you'll want to use a skeleton that matches your character and has all the bones you need for animation and bone based physics
+* edit the physics asset to create collision bodies and constraints (I won't get into the details of using the Physics Asset Editor right now)
+* create a nearly empty, invisible skeletal mesh as the base model for the mod (your attachment will replace it visually)
+* add that base model to your CustomizationItemDB (with no attachments)
+* cook your assets
+* edit your `destPakAssets` to include all the new assets, including the cloned attachment blueprint and animation blueprint
+* edit your attachment exclusion rules to exclude the base model on its own (`combosToSkip`) and to always require the attachment with your base model (`combosRequired`)
+* run `mix pak install [launch]` to mix the new attachment with your target base models, install the mod, and optionally launch the game to test it out
+
+### Searching game assets
+
+Using the `Search` action, you can search, visualize, and extract game assets in various ways
+(`Umodel` required). Search parameters can be set up in the settings file:
+* `searchingSlots` - whether to search CustomizationItemDB entries for models and attachments
+* `searchAssetNameMatchers` - asset path search matchers
+* `searchNameMapNameMatchers` - asset name map name matchers
+* `searchResume` - details to resume a previous, unfinished search, or to start the search from a specific point
+
+When running search, you can use the keyboard to interactively pause (`p`), toggle
+visualizations (`v`), toggle searching slots (`s`), or quit the search (`q`).
 
 ## Compatibility
 
-Compatible with Windows, UAssetGUI 1.0.2, Unreal Engine 4.25, and DBD-4.4.2.
+Compatible with:
+* Windows
+* Dbd:
+  * 4.4.2
+  * 6.5.2
+* Cooked assets, UnrealPak, and Umodel for Unreal Engine versions:
+  * 4.25
+  * 4.27
+* UAssetGUI 1.0.2
 
 ## CLI usage
 
@@ -170,7 +216,7 @@ Run `DbdModSwap.exe -h` for detailed usage and options, or without any arguments
 
 ## Building
 
-For starters, you'll need Python 3. Setup a venv for the project and activate it.
+For starters, you'll need Python 3. Set up a venv for the project and activate it.
 Then, download all the dependencies with `pip install -r requirements.txt`.
 
 To bundle everything into a Windows executable, run `pyinstaller --onefile DbdModSwap.py`,

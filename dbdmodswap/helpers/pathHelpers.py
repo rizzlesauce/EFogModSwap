@@ -14,15 +14,16 @@ def normPath(path):
     return path.as_posix()
 
 
-def getPathInfo(path, relativeDir='./', debug=False):
+def getPathInfo(path, relativeDir='.', debug=False):
     result = {
-        'path': path,
+        'path': path or '',
         'normalized': '',
         'relativeDir': '',
         'relativeDirResolved': '',
         'isAbsolute': False,
         'absolute': '',
         'relative': None,
+        'dirname': '',
         'dir': '',
         'basename': '',
         'stem': '',
@@ -31,8 +32,9 @@ def getPathInfo(path, relativeDir='./', debug=False):
         'best': '',
     }
 
-    if path.strip():
+    if (path or '').strip():
         result['normalized'] = normPath(path)
+        result['dirname'] = os.path.dirname(result['normalized'])
         relativeDirResolved = normPath(pathlib.Path(relativeDir).resolve())
         result['relativeDirResolved'] = relativeDirResolved
 
