@@ -1,4 +1,4 @@
-# DbdModSwap
+f# DbdModSwap
 
 ![image](https://github.com/user-attachments/assets/05100984-5561-4a55-b0aa-275170228435)
 
@@ -154,8 +154,8 @@ with the base models (models with zero attachments) in the `CustimizationItemDB.
 Existing slots containing attachments will be removed and new ones will be added according to
 the stored attachment definitions and your exclusion rules.
 
-After that, the altered `CustomizationItemDB.uasset` file can be packaged and installed using
-the tool.
+After that, the altered `CustomizationItemDB.uasset` file can be packaged (`Pak`) and installed
+(`Install`) using the tool.
 
 #### Adding and cloning socket attachments interactively
 
