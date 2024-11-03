@@ -1,13 +1,20 @@
-f# DbdModSwap
+## DbdModSwap
 
 ![image](https://github.com/user-attachments/assets/05100984-5561-4a55-b0aa-275170228435)
 
 A DBD mod manager CLI for swapping mods between games, paking mods from lists of cooked assets,
 and creating custom character slots by mixing game socket attachments with character models.
 
-It also includes a customized game launcher menu, as well as a tool for extracting socket attachment definitions
-from existing customization item databases, and a tool for generating socket attachment definitions
-from attachment blueprint game paths.
+It also includes a customized game launcher menu, as well as a tool for extracting and cloning socket attachments
+from existing customization item databases and blueprint paths, and a search feature for exploring game assets.
+
+## Highlights
+* quickly copy accessory blueprints so you can make custom accessories (which can also be full character models with custom bones) that are bone physics capable and also still work with character animations
+* configure pakchunk asset lists and quickly (re-)package mods from cooked content (no manual file copying needed to package or recook/repackage a mod)
+* conveniently chain actions together ("pak install launch") to quickly (re-)package a mod, install it into the game, and launch the game immediately to test it out
+* quickly swap between different mod sets you've configured (e.g., 1v1 vs 1v4)
+* search, list, and inspect all game assets, pakchunks, and CustomizationItemDB tables, looking for models, accessories, blueprints, name map entries, etc.
+* auto populate CustomizationItemDB slots with accessory combinations you've configured using inclusion and exclusion rules
 
 ## [Releases](https://github.com/rizzlesauce/DbdModSwap/releases)
 
