@@ -3288,7 +3288,8 @@ class DbdModSwapCommandRunner():
                                     sprint(f'{self.dryRunPrefix}Removing "[Paks]/{pakchunkRelPath}" which is also stored at "{dest}"')
                                     if self.readyToWrite(source):
                                         if not self.dryRun:
-                                            pathlib.Path.unlink(source)
+                                            # TODO: remove this because readyToWrite() should have already deleted it
+                                            pathlib.Path.unlink(source, missing_ok=True)
                                             sourceSig = pakchunkToSigFilePath(source)
                                             if os.path.isfile(sourceSig):
                                                 # TODO: check readyToWrite()?
