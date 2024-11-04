@@ -1,5 +1,6 @@
 import os
 import platform
+import semver
 
 import yaml
 
@@ -22,6 +23,7 @@ from dbdmodswap.helpers.settingsHelpers import (DefaultAttachmentsDir,
                                                 isValidSettingsFilename)
 from dbdmodswap.helpers.uassetHelpers import UassetGuiProgramStem
 from dbdmodswap.helpers.umodelHelpers import UmodelProgramStem
+from dbdmodswap.helpers.releaseHelpers import getGithubProjectReleaseUrl, getLatestReleaseVersion
 from dbdmodswap.helpers.windowsHelpers import openFile, openFolder
 from dbdmodswap.helpers.yamlHelpers import yamlDump
 from dbdmodswap.metadata.programMetaData import ProgramName, Version
@@ -153,8 +155,17 @@ def runMenu(args, parser):
             menuSettings['showFirstTimeMessage'] = False
             saveMenuSettings()
             sprintClear()
-        else:
-            break
+            continue
+
+        break
+
+    def printLatestVersionDownloadMessage(latestVersion):
+        sprint(f'A new version ({latestVersion}) is available to download at {getGithubProjectReleaseUrl()}')
+
+    latestVersion = getLatestReleaseVersion()
+    if latestVersion and semver.compare(Version, latestVersion) < 0:
+        sprintPad()
+        printLatestVersionDownloadMessage(latestVersion)
 
     sprintPad()
     sprint('You can run one or more actions at a time by entering menu item numbers or names.')
@@ -766,6 +777,20 @@ def runMenu(args, parser):
             if popAction('version'):
                 prepActionRun()
                 sprint(f'{parser.prog} {Version}')
+                latestVersion = getLatestReleaseVersion()
+                if latestVersion:
+                    if semver.compare(Version, latestVersion) < 0:
+                        sprintPad()
+                        printLatestVersionDownloadMessage(latestVersion)
+                    elif semver.compare(Version, latestVersion) == 0:
+                        sprint('Up-to-date.')
+                    else:
+                        sprintPad()
+                        sprint(f'You are currently ahead of the latest release version ({latestVersion}).')
+                else:
+                    sprintPad()
+                    esprint('Could not get latest release version information.')
+
                 shouldPromptToContinue = True
 
             if popAction('settingsFile'):

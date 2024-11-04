@@ -13,6 +13,7 @@ from dbdmodswap.helpers.customizationItemDbHelpers import \
 from dbdmodswap.helpers.guiHelpers import getForegroundWindow
 from dbdmodswap.helpers.pakHelpers import UnrealPakProgramFilename
 from dbdmodswap.helpers.pathHelpers import getPathInfo
+from dbdmodswap.helpers.releaseHelpers import getGithubProjectUrl
 from dbdmodswap.helpers.settingsHelpers import (DefaultAttachmentsDir,
                                                 DefaultGameVersion,
                                                 DefaultPakingDir,
@@ -50,6 +51,7 @@ settings file, configuring `modGroups` and `modConfigs`. Finally, run `ActiveMod
             CustomizationItemDbResourceName=CustomizationItemDbAssetName,
             UassetGuiProgramStem=UassetGuiProgramStem,
         ),
+        epilog=f'Read documentation and more at {getGithubProjectUrl()}'
     )
     parser.add_argument(
         'settingsFile',
