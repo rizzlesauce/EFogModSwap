@@ -146,6 +146,9 @@ Some attachments might be duplicates of others, so just delete those.
 Once you're done editing the attachment definitions, run `Rename` to have the tool rename
 each attachment definition file in a standardized way to match its attachment ID.
 
+NOTE: extracted attachments for game version 4.4.2 should also work in 6.5.2, provided that
+the blueprint path has not changed.
+
 #### Limiting attachment combinations
 
 By default, the tool will try to create every possible combination of attachments with the target

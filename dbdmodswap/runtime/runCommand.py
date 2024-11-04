@@ -32,11 +32,12 @@ from dbdmodswap.helpers.consoleHelpers import (clearSprintRecording, confirm,
                                                sprintput, sprintSeparator,
                                                startSprintRecording)
 from dbdmodswap.helpers.customizationItemDbHelpers import (
-    AccessoryBlueprintName, AssetNameFieldName, CustomizationItemDbAssetName,
-    ECustomizationCategoryName, ECustomizationCategoryNamePrefix,
-    ModelDisplayNamePropNameFieldName, NameMapFieldName, addAllToNameMap,
-    findSocketAttachmentsStruct, generateRandomHexString, getAssetPath,
-    getAssetPathProperty, getAssociatedCharacterId, getAttachmentBlueprintPath,
+    AccessoryBlueprintName, AssetNameFieldName, AttachmentBlueprintName,
+    CustomizationItemDbAssetName, ECustomizationCategoryName,
+    ECustomizationCategoryNamePrefix, ModelDisplayNamePropNameFieldName,
+    NameMapFieldName, addAllToNameMap, findSocketAttachmentsStruct,
+    generateRandomHexString, getAssetPath, getAssetPathProperty,
+    getAssociatedCharacterId, getAttachmentBlueprintPath,
     getAttachmentBlueprintProperty, getAttachmentSkeletalMeshPath,
     getAttachmentSocketName, getItemMeshProperty, getModelDisplayNameProperty,
     getModelIdProperty, getModelName, getSocketAttachments, getUiDataValues,
@@ -774,6 +775,7 @@ class DbdModSwapCommandRunner():
                                 attachmentIdsSet = frozenset(attachmentIds)
 
                                 shouldSkipCombo = False
+
                                 if not shouldSkipCombo:
                                     baseModels = categoryCombinationsToSkip.get(categoryName, {}).get(attachmentIdsSet, None)
                                     if baseModels is not None:
@@ -855,6 +857,20 @@ class DbdModSwapCommandRunner():
                                 newSocketAttachments = getPropertyValue(newSocketAttachmentsStruct)
 
                                 for attachment in combo:
+                                    # Correct the blueprint property name for different game versions
+                                    attachmentValues = getPropertyValue(attachment['attachmentData'])
+                                    blueprintAttachmentProperty = getAttachmentBlueprintProperty(attachmentValues)
+                                    if self.gameVersion == '6.5.2':
+                                        if blueprintAttachmentProperty[NameFieldName] != AccessoryBlueprintName:
+                                            blueprintAttachmentProperty[NameFieldName] = AccessoryBlueprintName
+                                            if self.debug:
+                                                sprint(f'- Changing attachment blueprint property name field to `{blueprintAttachmentProperty[NameFieldName]}`')
+                                    else:
+                                        if blueprintAttachmentProperty[NameFieldName] != AttachmentBlueprintName:
+                                            blueprintAttachmentProperty[NameFieldName] = AttachmentBlueprintName
+                                            if self.debug:
+                                                sprint(f'- Changing attachment blueprint property name field to `{blueprintAttachmentProperty[NameFieldName]}`')
+
                                     newSocketAttachments.append(attachment['attachmentData'])
                                     # TODO: remove
                                     if False:
@@ -1711,11 +1727,11 @@ class DbdModSwapCommandRunner():
 
                             return True
 
-                        values = getPropertyValue(attachment['attachmentData'])
-                        blueprintAttachment = getAttachmentBlueprintProperty(values, '4.4.2')
+                        attachmentValues = getPropertyValue(attachment['attachmentData'])
+                        attachmentBlueprintProperty = getAttachmentBlueprintProperty(attachmentValues)
                         if self.gameVersion == '6.5.2':
-                            blueprintAttachment[NameFieldName] = AccessoryBlueprintName
-                        assetPath = getAssetPathProperty(getPropertyValue(blueprintAttachment))
+                            attachmentBlueprintProperty[NameFieldName] = AccessoryBlueprintName
+                        assetPath = getAssetPathProperty(getPropertyValue(attachmentBlueprintProperty))
                         assetPath[AssetNameFieldName] = ''
                         while True:
                             gotOtherDetails = False
@@ -1735,7 +1751,7 @@ class DbdModSwapCommandRunner():
 
                                 return True
 
-                            assetPath[AssetNameFieldName] = sprintput('Blueprint path: ').strip()
+                            assetPath[AssetNameFieldName] = sprintput('Blueprint path: ').strip().removesuffix(UassetFilenameSuffix)
                             if not assetPath[AssetNameFieldName]:
                                 if confirmCanceled():
                                     break

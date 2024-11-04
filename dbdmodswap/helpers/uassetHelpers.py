@@ -44,8 +44,8 @@ def getShortenedAssetPath(assetPath):
 
 def findNextItemByFields(items, fields, values):
     if items:
-        fieldsValuesMap = {f: v for f, v in zip(fields, values)}
-        return next((item for item in items if all(item[field] == value for field, value in fieldsValuesMap.items())), None)
+        fieldsValuesMap = {f: v for f, v in zip(fields, [{item} if isinstance(item, str) else set(item) for item in values])}
+        return next((item for item in items if all(item[field] in values for field, values in fieldsValuesMap.items())), None)
 
 
 def findNextItemByType(items, typeName):

@@ -148,7 +148,15 @@ def getAttachmentSocketName(attachmentValues):
     )
 
 
-def getAttachmentBlueprintProperty(attachmentValues, gameVersion):
+def getAttachmentBlueprintProperty(attachmentValues, gameVersion=None):
+    name = None
+    if gameVersion is None:
+        name = [AccessoryBlueprintName, AttachmentBlueprintName]
+    elif gameVersion == '6.5.2':
+        name = AccessoryBlueprintName
+    else:
+        name = AttachmentBlueprintName
+
     return findNextItemByFields(
         attachmentValues,
         [
@@ -157,7 +165,7 @@ def getAttachmentBlueprintProperty(attachmentValues, gameVersion):
         ],
         [
             SoftObjectPropertyDataType,
-            AccessoryBlueprintName if gameVersion == '6.5.2' else AttachmentBlueprintName,
+            name,
         ]
     )
 
