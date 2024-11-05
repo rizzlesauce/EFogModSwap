@@ -1054,6 +1054,9 @@ class DbdModSwapCommandRunner():
         saveFilePath = normPath(os.path.join(umodelCwdPathInfo['best'], UmodelSaveFolderName, saveFilePackageRelPath))
         if not os.path.isfile(saveFilePath):
             message = f'Asset not saved to the expected location: "{saveFilePath}"'
+            if self.debug and not self.nonInteractive:
+                self.printError(message)
+                promptToContinue()
             raise ValueError(message)
 
         if not silent:
