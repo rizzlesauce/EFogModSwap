@@ -1093,7 +1093,7 @@ class DbdModSwapCommandRunner():
         unrealProjectDir = kwargs.get('unrealProjectDir', None)
         searchingGameAssets = kwargs.get('searchingGameAssets', False)
         self.searchingSlots = kwargs.get('searchingSlots', None)
-        self.unrealEngineVersion = kwargs.get('unrealEngineVersion', getGameUnrealEngineVersion(self.gameVersion))
+        self.unrealEngineVersion = kwargs.get('unrealEngineVersion', None)
 
         # TODO: attachmemt filters: characterID(s), item role(s), attachment type(s)
         # TODO: be able to specify regex and case insensitivity
@@ -1308,7 +1308,6 @@ class DbdModSwapCommandRunner():
             settingsDir = settingsPathInfo['dir']
             settings = readSettingsRecursive(settingsFilePath)
 
-            # TODO: figure out precedence rules
             unrealPakPath = settings.get('unrealPakPath', unrealPakPath)
             unrealPakPath = unrealPakPath or ''
             unrealPakPath = getPathInfo(unrealPakPath)['best']
@@ -1342,7 +1341,6 @@ class DbdModSwapCommandRunner():
                 self.printError(f'`sigFilePath` is not a file ("{sigFilePath}")')
                 sigFilePath = ''
 
-            # TODO: figure out precedence rules
             self.uassetGuiPath = settings.get('uassetGuiPath', self.uassetGuiPath)
             self.uassetGuiPath = self.uassetGuiPath or ''
             self.uassetGuiPath = getPathInfo(self.uassetGuiPath)['best']
@@ -1362,7 +1360,6 @@ class DbdModSwapCommandRunner():
                 self.printError(f'`uassetGuiPath` is not a file ("{self.uassetGuiPath}")')
                 self.uassetGuiPath = ''
 
-            # TODO: figure out precedence rules
             self.umodelPath = settings.get('umodelPath', self.umodelPath)
             self.umodelPath = self.umodelPath or ''
             self.umodelPath = getPathInfo(self.umodelPath)['best']
@@ -1376,7 +1373,6 @@ class DbdModSwapCommandRunner():
                 self.printError(f'`umodelPath` is not a file ("{self.umodelPath}")')
                 self.umodelPath = ''
 
-            # TODO: figure out precedence rules
             pakingDir = settings.get('pakingDir', pakingDir)
             pakingDir = pakingDir or ''
             pakingDir = getPathInfo(pakingDir)['best']
@@ -1391,7 +1387,6 @@ class DbdModSwapCommandRunner():
                 ):
                     self.printWarning(f'Missing or empty `pakingDir`. Defaulting to "{pakingDir}"')
 
-            # TODO: figure out precedence rules
             self.attachmentsDir = settings.get('attachmentsDir', self.attachmentsDir)
             self.attachmentsDir = self.attachmentsDir or ''
             self.attachmentsDir = getPathInfo(self.attachmentsDir)['best']
@@ -1406,7 +1401,6 @@ class DbdModSwapCommandRunner():
                 ):
                     self.printWarning(f'Missing or empty `attachmentsDir`. Defaulting to "{self.attachmentsDir}"')
 
-            # TODO: figure out precedence rules
             gameDir = settings.get('gameDir', gameDir)
             gameDir = gameDir or ''
             gameDir = getPathInfo(gameDir)['best']
@@ -1423,23 +1417,28 @@ class DbdModSwapCommandRunner():
             if not gameName and inspecting:
                 self.printWarning('Missing or empty `gameName`')
 
-            # TODO: figure out precedence rules
-            self.gameVersion = settings.get('gameVersion', self.gameVersion)
-            self.gameVersion = self.gameVersion or None
+            self.gameVersion = settings.get('gameVersion', None) or self.gameVersion or None
             if not self.gameVersion:
                 self.gameVersion = DefaultGameVersion
                 if inspecting:
                     self.printWarning(f'Missing or empty `gameVersion`. Defaulting to {self.gameVersion}')
 
-            # TODO: figure out precedence rules
-            self.unrealEngineVersion = settings.get('unrealEngineVersion', self.unrealEngineVersion)
-            self.unrealEngineVersion = self.unrealEngineVersion or None
+            if self.debug:
+                sprint(f'Game version: {self.gameVersion}')
+
+            self.unrealEngineVersion = (
+                settings.get('unrealEngineVersion', None)
+                or getGameUnrealEngineVersion(self.gameVersion)
+                or self.unrealEngineVersion
+                or None
+            )
             if not self.unrealEngineVersion:
-                self.unrealEngineVersion = getGameUnrealEngineVersion(self.gameVersion)
                 if inspecting:
-                    self.printWarning('Missing or empty `unrealEngineVersion`')
-                    if self.unrealEngineVersion:
-                        self.printWarning(f'Defaulting to unreal engine version {self.unrealEngineVersion}')
+                    self.unrealEngineVersion = getGameUnrealEngineVersion(DefaultGameVersion)
+                    self.printWarning(f'Missing or empty `unrealEngineVersion`. Defaulting to {self.unrealEngineVersion}')
+
+            if self.debug:
+                sprint(f'Unreal engine version: {self.unrealEngineVersion}')
 
             if not extraContentDir:
                 extraContentDir = settings.get('extraContentDir', '')
@@ -1454,7 +1453,6 @@ class DbdModSwapCommandRunner():
                 ):
                     self.printWarning(f'Missing or empty `extraContentDir`')
 
-            # TODO: figure out precedence rules
             unrealProjectDir = settings.get('unrealProjectDir', unrealProjectDir)
             unrealProjectDir = unrealProjectDir or ''
             unrealProjectDir = getPathInfo(unrealProjectDir)['best']
