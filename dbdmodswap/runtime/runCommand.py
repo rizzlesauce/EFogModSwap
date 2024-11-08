@@ -1132,65 +1132,6 @@ class DbdModSwapCommandRunner():
 
         writingUnalteredDb = True
 
-        if killingGame:
-            sprintPad()
-            sprint(f'{self.dryRunPrefix}Killing game...')
-            if getGameIsRunning():
-                didIt = False
-                if not self.dryRun:
-                    killExitCode = killGame()
-                    if killExitCode:
-                        self.printError(f'killing game returned exit code: {killExitCode}')
-                    else:
-                        didIt = True
-                if didIt:
-                    sprint(f'{self.dryRunPrefix}Game process terminated.')
-                # TODO: need to wait?
-            else:
-                sprint('Game is not running.')
-            sprintPad()
-            sprint(f'{self.dryRunPrefix}Killing game lobby...')
-            if getGameLobbyIsRunning():
-                shouldDoIt = True
-                if not getIsRunningAsAdmin():
-                    sprint('Must gain elevated access to kill lobby')
-                    if self.nonInteractive:
-                        self.printError('Cannot gain elevated access in non-interactive mode')
-                    else:
-                        shouldDoIt = confirm('continue to UAC', emptyMeansNo=False)
-
-                if shouldDoIt:
-                    didIt = False
-                    if not self.dryRun:
-                        killExitCode = killGameLobby()
-                        if killExitCode:
-                            self.printError(f'killing lobby returned exit code: {killExitCode}')
-                        else:
-                            didIt = True
-                    if didIt:
-                        sprint(f'{self.dryRunPrefix}Lobby process terminated.')
-                        # TODO: need to wait?
-                else:
-                    sprint('Skipping killing lobby.')
-            else:
-                sprint('Lobby is not running.')
-            sprintPad()
-            sprint(f'{self.dryRunPrefix}Killing game server...')
-            if getGameServerIsRunning():
-                didIt = False
-                if not self.dryRun:
-                    killExitCode = killGameServer()
-                    if killExitCode:
-                        self.printError(f'killing server returned exit code: {killExitCode}')
-                    else:
-                        didIt = True
-                if didIt:
-                    sprint(f'{self.dryRunPrefix}Server process terminated.')
-                # TODO: need to wait?
-            else:
-                sprint('Server is not running.')
-            sprintPad()
-
         settingsFilePathInfo = getPathInfo(settingsFilePath)
 
         settingsDirPathInfo = getPathInfo(settingsFilePathInfo['dir'])
@@ -1616,6 +1557,85 @@ class DbdModSwapCommandRunner():
                     if not os.path.isdir(gamePaksDir):
                         self.printError(f'Game paks folder does not exist ("{gamePaksDir}")')
                         gamePaksDir = ''
+
+            if killingGame:
+                sprintPad()
+                sprint(f'{self.dryRunPrefix}Killing game...')
+                isRunningAsAdmin = getIsRunningAsAdmin()
+                if getGameIsRunning():
+                    shouldDoIt = True
+                    asAdmin = self.gameVersion == '6.5.2' and not isRunningAsAdmin
+                    if asAdmin:
+                        sprint('Must gain elevated access to kill game')
+                        if self.nonInteractive:
+                            self.printError('Cannot gain elevated access in non-interactive mode')
+                        else:
+                            shouldDoIt = confirm('continue to UAC', emptyMeansNo=False)
+
+                    if shouldDoIt:
+                        didIt = False
+                        if not self.dryRun:
+                            killExitCode = killGame(asAdmin=asAdmin)
+                            if killExitCode:
+                                self.printError(f'killing game returned exit code: {killExitCode}')
+                            else:
+                                didIt = True
+                        if didIt:
+                            sprint(f'{self.dryRunPrefix}game process terminated.')
+                            # TODO: need to wait?
+                    else:
+                        sprint('Skipping killing game.')
+                else:
+                    sprint('Game is not running.')
+                sprintPad()
+
+                if self.gameVersion != '6.5.2':
+                    sprintPad()
+                    sprint(f'{self.dryRunPrefix}Killing game lobby...')
+                    if getGameLobbyIsRunning():
+                        shouldDoIt = True
+                        asAdmin = not isRunningAsAdmin
+                        if asAdmin:
+                            sprint('Must gain elevated access to kill lobby')
+                            if self.nonInteractive:
+                                self.printError('Cannot gain elevated access in non-interactive mode')
+                            else:
+                                shouldDoIt = confirm('continue to UAC', emptyMeansNo=False)
+
+                        if shouldDoIt:
+                            didIt = False
+                            if not self.dryRun:
+                                killExitCode = killGameLobby(asAdmin=asAdmin)
+                                if killExitCode:
+                                    self.printError(f'killing lobby returned exit code: {killExitCode}')
+                                else:
+                                    didIt = True
+                            if didIt:
+                                sprint(f'{self.dryRunPrefix}Lobby process terminated.')
+                                # TODO: need to wait?
+                        else:
+                            sprint('Skipping killing lobby.')
+                    else:
+                        sprint('Lobby is not running.')
+                    sprintPad()
+
+                if self.gameVersion != '6.5.2':
+                    sprintPad()
+                    sprint(f'{self.dryRunPrefix}Killing game server...')
+                    if getGameServerIsRunning():
+                        didIt = False
+                        if not self.dryRun:
+                            killExitCode = killGameServer()
+                            if killExitCode:
+                                self.printError(f'killing server returned exit code: {killExitCode}')
+                            else:
+                                didIt = True
+                        if didIt:
+                            sprint(f'{self.dryRunPrefix}Server process terminated.')
+                        # TODO: need to wait?
+                    else:
+                        sprint('Server is not running.')
+                    sprintPad()
 
             if creatingAttachments:
                 if self.nonInteractive:

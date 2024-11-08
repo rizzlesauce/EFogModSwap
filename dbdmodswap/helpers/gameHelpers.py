@@ -7,8 +7,8 @@ from dbdmodswap.metadata.programMetaData import ProgramName
 from .pathHelpers import normPath
 from .tempFileHelpers import openTemporaryFile
 from .windowsHelpers import (checkTaskRunning, getCheckTaskRunningCommand,
-                             getIsRunningAsAdmin, getPowershellCommand,
-                             getStartCommand, getTaskKillCommand, taskKill)
+                             getPowershellCommand, getStartCommand,
+                             getTaskKillCommand, taskKill)
 
 KnownSupportedGameVersions = [
     '4.4.2',
@@ -45,16 +45,16 @@ def getGameIsRunning():
     return checkTaskRunning(DefaultGameProgramName)
 
 
-def killGameServer():
-    return taskKill(DefaultGameServerProgramName)
+def killGameServer(asAdmin=False):
+    return taskKill(DefaultGameServerProgramName, asAdmin=asAdmin)
 
 
-def killGameLobby():
-    return taskKill(DefaultGameLobbyProgramName, asAdmin=not getIsRunningAsAdmin())
+def killGameLobby(asAdmin=False):
+    return taskKill(DefaultGameLobbyProgramName, asAdmin=asAdmin)
 
 
-def killGame():
-    return taskKill(DefaultGameProgramName)
+def killGame(asAdmin=False):
+    return taskKill(DefaultGameProgramName, asAdmin=asAdmin)
 
 
 def getLauncherBatchFileContent(
