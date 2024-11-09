@@ -194,7 +194,7 @@ reservedPakchunks:
     else f"extraContentDir: assets-{kwargs.get('gameVersion', None) or DefaultGameVersion}"
 }
 
-# Path to {CustomizationItemDbAssetName} if mixing or manipulating custom slots.
+# Path to {CustomizationItemDbAssetName} if mixing or manipulating custom cosmetic slots.
 # This can be either a UASSET file, or a JSON file saved from {UassetGuiProgramStem}.
 # If the path begins with "/Content/", it will be treated like a relative game path
 # within the pakchunk or unreal project specified above.
@@ -295,7 +295,7 @@ attachmentConflicts:
 # '==' after an attachment name means that it will skip the exact combination instead of
 # all supersets of the combination. Additionally, ending the line with ':' and one or more comma separated base model
 # names will limit the exclusion to those models only. If you use '==' without an attachment name, it will exclude
-# the base model (the model with no attachments) from the resulting custom slots.
+# the base model (the model with no attachments) from the resulting cosmetic slots.
 combosToSkip:
   SurvivorLegs:
   # remove long chains for the lower waistline pants in some legs variants
@@ -327,7 +327,7 @@ combosToSkip:
     - KateGoldNecklaceNoRing
 
 # Require some attachment combinations - if a combination doesn't include these combinations, exclude it.
-# This can be helpful for making sure an essential attachment for a model is present in every custom slot.
+# This can be helpful for making sure an essential attachment for a model is present in every custom cosmetic slot.
 combosRequired:
   SurvivorTorso:
   # this base mode is incomplete without this attachment, so always include it

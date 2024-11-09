@@ -3,7 +3,7 @@
 ![image](https://github.com/user-attachments/assets/05100984-5561-4a55-b0aa-275170228435)
 
 A DBD mod manager CLI for swapping mods between games, paking mods from lists of cooked assets,
-and creating custom character slots by mixing game socket attachments with character models.
+and creating custom cosmetic slots by mixing game socket attachments with character models.
 
 It also includes a customized game launcher menu, as well as a tool for extracting and cloning socket attachments
 from existing customization item databases and blueprint paths, and a search feature for exploring game assets.
@@ -105,7 +105,7 @@ Attachment mixing is all about accessorizing character models with new combinati
 and model attachments. So, let's say you want to put character A's backpack and character B's necklace on
 character C - mixing can make that happen.
 
-Mixing works by modifying CustomizationItemDB assets (custom slots). Typically, you would have a different
+Mixing works by modifying CustomizationItemDB assets (custom cosmetic slots). Typically, you would have a different
 CustomizationItemDB for each unique character model or related models (like an outfit).
 Perhaps, in the future, the tool would be able to assist in creating a CustomizationItemDB
 without you having to make one in unreal engine. But for now, you'll need to use a
@@ -115,7 +115,7 @@ For editing CustomizationItemDBs, you'll need [UAssetGUI](https://github.com/ate
 anywhere you want and configure the setting `uassetGuiPath` to point to the EXE.
 
 Choose a cooked output folder (or, a pakchunk file or folder) containing a character model or socket attachment
-definitions you want to mix. It should contain a `CustomizationItemDB.uasset` file defining custom model slots.
+definitions you want to mix. It should contain a `CustomizationItemDB.uasset` file defining custom cosmetic slots.
 If you're wanting to mix a model from the pakchunk, the CustomizationItemDB will need to have a slot for that
 model with zero socket attachments. If it doesn't, one will need to be created or edited in UE4 or `UAssetGUI`
 to get a model slot with no attachments on it.
@@ -152,7 +152,7 @@ the blueprint path has not changed.
 #### Limiting attachment combinations
 
 By default, the tool will try to create every possible combination of attachments with the target
-models. If there are a lot of attachments, this can make an enormous amount of custom slots in the
+models. If there are a lot of attachments, this can make an enormous amount of custom cosmetic slots in the
 game.
 
 So, in most cases, you'll want to limit the combinations using exclusion rules. There are many
