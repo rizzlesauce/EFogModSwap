@@ -2860,12 +2860,31 @@ class DbdModSwapCommandRunner():
                                         self.ensureDir(destPakContentDir, warnIfNotExist=False)
                                         for assetPath in destPakAssets:
                                             srcFilesInfo = assetStemPathSourceFilesMap[assetPath]
+                                            fileSuffixes = srcFilesInfo['fileSuffixes']
+                                            if UassetFilenameSuffix in fileSuffixes:
+                                                fileSuffixes = [UassetFilenameSuffix] + [s for s in fileSuffixes if s != UassetFilenameSuffix]
+
                                             assetSourceContentDir = srcContentDir
                                             if assetSourceContentDir is None:
                                                 assetSourceContentDir = assetStemPathSourceFilesMap[assetPath]['contentDir']
-                                            for extension in srcFilesInfo['fileSuffixes']:
+
+                                            for extension in fileSuffixes:
                                                 relFilePath = f'{assetPath}{extension}'
                                                 srcPath = normPath(os.path.join(assetSourceContentDir, relFilePath))
+
+                                                # if UassetGUI json file exists, convert it to uasset file before copying it
+                                                if extension == UassetFilenameSuffix:
+                                                    jsonSuffix = '-json.json'
+                                                    relJsonFilePath = f'{assetPath}{jsonSuffix}'
+                                                    srcJsonPath = normPath(os.path.join(assetSourceContentDir, relJsonFilePath))
+                                                    if os.path.exists(srcJsonPath):
+                                                        sprintPad()
+                                                        sprint(f'{self.dryRunPrefix}Converting "{srcJsonPath}" to "{srcPath}"')
+                                                        sprintPad()
+                                                        if self.readyToWrite(srcPath):
+                                                            if not self.dryRun:
+                                                                jsonToUasset(srcJsonPath, srcPath, self.uassetGuiPath)
+
                                                 destPathFileInfo = getPathInfo(os.path.join(destPakContentDir, relFilePath))
                                                 self.ensureDir(destPathFileInfo['dir'], warnIfNotExist=False)
                                                 destPath = destPathFileInfo['best']
