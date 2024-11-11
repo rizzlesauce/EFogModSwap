@@ -1101,10 +1101,10 @@ class DbdModSwapCommandRunner():
         # TODO: attachmemt filters: characterID(s), item role(s), attachment type(s)
         # TODO: be able to specify regex and case insensitivity
         prevSearchResume = None
-        # TODO: implement this
         searchPakchunkNameMatchers = None
         searchAssetNameMatchers = None
         searchNameMapNameMatchers = None
+        searchJsonStringMatchers = None
 
         searchResume = {
             'pakchunkRelStemPath': None,
@@ -1113,6 +1113,7 @@ class DbdModSwapCommandRunner():
 
         searchAssetMatchesFile = None
         searchNameMapMatchesFile = None
+        searchJsonStringMatchesFile = None
 
         def appendYamlFileResult(file, items):
             file.write(yamlDump(jsonifyDataRecursive(items)))
@@ -1519,6 +1520,10 @@ class DbdModSwapCommandRunner():
             if prevSearchResume is None:
                 prevSearchResume = settings.get('searchResume', None)
 
+            if searchPakchunkNameMatchers is None:
+                searchPakchunkNameMatchers = settings.get('searchPakchunkNameMatchers', None)
+            searchPakchunkNameMatchers = searchPakchunkNameMatchers or []
+
             if searchAssetNameMatchers is None:
                 searchAssetNameMatchers = settings.get('searchAssetNameMatchers', None)
             searchAssetNameMatchers = searchAssetNameMatchers or []
@@ -1526,6 +1531,10 @@ class DbdModSwapCommandRunner():
             if searchNameMapNameMatchers is None:
                 searchNameMapNameMatchers = settings.get('searchNameMapNameMatchers', None)
             searchNameMapNameMatchers = searchNameMapNameMatchers or []
+
+            if searchJsonStringMatchers is None:
+                searchJsonStringMatchers = settings.get('searchJsonStringMatchers', None)
+            searchJsonStringMatchers = searchJsonStringMatchers or []
 
             if self.searchingSlots is None:
                 self.searchingSlots = settings.get('searchingSlots', None)
@@ -2993,9 +3002,9 @@ class DbdModSwapCommandRunner():
 
                 if searchingGameAssets:
                     sprint('Searching game assets...')
+                    sprintPad()
 
-                    if searchingGameAssets:
-                        sprintPad()
+                    if searchAssetNameMatchers:
                         searchAssetMatchesFile = tempfile.NamedTemporaryFile(
                             mode='w',
                             encoding='utf-8',
@@ -3007,6 +3016,7 @@ class DbdModSwapCommandRunner():
                         searchAssetMatchesFile.write('searchAssetMatches:\n')
                         sprint(f'Created search results file: {searchAssetMatchesFile.name}')
 
+                    if searchNameMapNameMatchers:
                         searchNameMapMatchesFile = tempfile.NamedTemporaryFile(
                             mode='w',
                             encoding='utf-8',
@@ -3017,7 +3027,20 @@ class DbdModSwapCommandRunner():
                         )
                         searchNameMapMatchesFile.write('searchNameMapMatches:\n')
                         sprint(f'Created search results file: {searchNameMapMatchesFile.name}')
-                        sprintPad()
+
+                    if searchJsonStringMatchers:
+                        searchJsonStringMatchesFile = tempfile.NamedTemporaryFile(
+                            mode='w',
+                            encoding='utf-8',
+                            dir=settingsFilePathInfo['dir'],
+                            prefix=f'searchJsonStringMatches-{settingsFilePathInfo["stem"]}_',
+                            suffix='.yaml',
+                            delete=False,
+                        )
+                        searchJsonStringMatchesFile.write('searchJsonStringMatches:\n')
+                        sprint(f'Created search results file: {searchJsonStringMatchesFile.name}')
+
+                    sprintPad()
 
                     if gamePaksDir and gameName and self.umodelPath and (unrealPakPath or True):
                         checkInput = self.startKeyboardListener(shouldStartPaused=True)
@@ -3036,6 +3059,13 @@ class DbdModSwapCommandRunner():
                                 if prevSearchResume:
                                     prevSearchResume['pakchunkRelStemPath'] = None
                                 searchResume['pakchunkRelStemPath'] = pakchunkRelStemPath
+
+                                if searchPakchunkNameMatchers:
+                                    # TODO: support case sensitive match?
+                                    matches = [m for m in searchPakchunkNameMatchers if m.lower() in pakchunkRelStemPath.lower()]
+                                    if not matches:
+                                        continue
+
                                 with tempfile.TemporaryDirectory(
                                     dir=pakingDir,
                                     prefix=f'{pakchunkStem}_',
@@ -3121,14 +3151,21 @@ class DbdModSwapCommandRunner():
                                                         continue
                                                     if prevSearchResume:
                                                         prevSearchResume['assetPath'] = None
-                                                    assetNameMatchers = searchAssetNameMatchers.copy()
-                                                    if self.searchingSlots:
-                                                        assetNameMatchers.append(
-                                                            f'{CustomizationItemDbAssetName}{UassetFilenameSuffix}',
-                                                        )
                                                     searchResume['assetPath'] = assetShortStemPath
-                                                    assetNameMatches = {term for term in assetNameMatchers if term.lower() in packagePath.lower()}
-                                                    if assetNameMatches or not assetNameMatchers:
+
+                                                    if searchAssetNameMatchers:
+                                                        assetNameMatchers = searchAssetNameMatchers.copy()
+                                                        if self.searchingSlots:
+                                                            assetNameMatchers.append(
+                                                                f'{CustomizationItemDbAssetName}{UassetFilenameSuffix}',
+                                                            )
+                                                        # TODO: support case insensitive search (.lower())?
+                                                        assetNameMatches = {term for term in assetNameMatchers if term in packagePath}
+                                                    else:
+                                                        assetNameMatchers = None
+                                                        assetNameMatches = None
+
+                                                    if not assetNameMatchers or assetNameMatches:
                                                         if True:
                                                             sprintPad()
                                                             sprint(f'{assetsSeenCount}{f"/{totalFileCount}" if totalFileCount else ""} Asset name match ("{",".join(assetNameMatches)}"): {pakchunkRelStemPath} - {assetShortStemPath}')
@@ -3139,7 +3176,8 @@ class DbdModSwapCommandRunner():
                                                             'assetPath': assetShortStemPath,
                                                             'pakchunk': pakchunkRelStemPath,
                                                         }
-                                                        appendYamlFileResult(searchAssetMatchesFile, [result])
+                                                        if searchAssetMatchesFile:
+                                                            appendYamlFileResult(searchAssetMatchesFile, [result])
                                                         try:
                                                             saveFilePath = self.saveAsset(
                                                                 tempDirPathInfo['absolute'],
@@ -3181,6 +3219,7 @@ class DbdModSwapCommandRunner():
                                                                                 # TODO: remove
                                                                                 if False:
                                                                                     sprint(name)
+                                                                                # TODO: support case sensitive search?
                                                                                 nameMapMatches = [m for m in searchNameMapNameMatchers if m.lower() in name.lower()]
                                                                                 if True:
                                                                                     for matcher in nameMapMatches:
@@ -3207,6 +3246,23 @@ class DbdModSwapCommandRunner():
                                                                                     'pakchunk': pakchunkRelStemPath,
                                                                                 }
                                                                                 appendYamlFileResult(searchNameMapMatchesFile, [result])
+
+                                                                        if searchJsonStringMatchers:
+                                                                            jsonStringLines = json.dumps(assetData, indent=2).split('\n')
+                                                                            for matcher in searchJsonStringMatchers:
+                                                                                for lineIndex, line in enumerate(jsonStringLines):
+                                                                                    # TODO: support case sensitive search?
+                                                                                    if matcher.lower() in line.lower():
+                                                                                        result = {}
+                                                                                        result[assetShortStemPath] = {
+                                                                                            'matcher': matcher,
+                                                                                            'jsonLineNumber': lineIndex + 1,
+                                                                                            'lines': [line],
+                                                                                            'assetNameMatches': assetNameMatches,
+                                                                                            'assetPath': assetShortStemPath,
+                                                                                            'pakchunk': pakchunkRelStemPath,
+                                                                                        }
+                                                                                        appendYamlFileResult(searchJsonStringMatchesFile, [result])
 
                                                                         if self.searchingSlots and packagePath.endswith(f'{CustomizationItemDbAssetName}{UassetFilenameSuffix}'):
                                                                             self.processCustomizationItemDb(
