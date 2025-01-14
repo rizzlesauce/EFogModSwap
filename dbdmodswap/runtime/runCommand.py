@@ -773,21 +773,21 @@ class DbdModSwapCommandRunner():
 
                                 attachmentIdsSet = frozenset(attachmentIds)
 
-                                shouldSkipCombo = False
+                                shouldSkipCombo = None
 
-                                if not shouldSkipCombo:
+                                if shouldSkipCombo is None:
                                     baseModels = categoryCombinationsToSkip.get(categoryName, {}).get(attachmentIdsSet, None)
                                     if baseModels is not None:
                                         if len(baseModels) == 0 or modelBaseName in baseModels:
                                             shouldSkipCombo = True
 
-                                if not shouldSkipCombo:
+                                if shouldSkipCombo is None:
                                     for combosToSkip, baseModels in categoryCombinationSubsetsToSkip.get(categoryName, {}).items():
                                         if (len(baseModels) == 0 or modelBaseName in baseModels) and combosToSkip <= attachmentIdsSet:
                                             shouldSkipCombo = True
                                             break
 
-                                if not shouldSkipCombo:
+                                if shouldSkipCombo is None:
                                     for combosRequired, baseModels in categoryCombinationsRequired.get(categoryName, {}).items():
                                         if len(baseModels) and modelBaseName not in baseModels:
                                             continue
@@ -796,7 +796,7 @@ class DbdModSwapCommandRunner():
                                             shouldSkipCombo = True
                                             break
 
-                                if not shouldSkipCombo:
+                                if shouldSkipCombo is None:
                                     for combosRequired, baseModels in categoryCombinationSubsetsRequired.get(categoryName, {}).items():
                                         if len(baseModels) and modelBaseName not in baseModels:
                                             continue
@@ -805,19 +805,26 @@ class DbdModSwapCommandRunner():
                                             shouldSkipCombo = True
                                             break
 
+                                if shouldSkipCombo is None:
+                                    # allow all by default
+                                    shouldSkipCombo = False
+
                                 if shouldSkipCombo:
-                                    if modelBaseName not in combinationsSkipped:
-                                        combinationsSkipped[modelBaseName] = {}
-                                    if categoryName not in combinationsSkipped[modelBaseName]:
-                                        combinationsSkipped[modelBaseName][categoryName] = set()
-                                    combinationsSkipped[modelBaseName][categoryName].add(attachmentIdsSet)
+                                    if self.debug:
+                                        if modelBaseName not in combinationsSkipped:
+                                            combinationsSkipped[modelBaseName] = {}
+                                        if categoryName not in combinationsSkipped[modelBaseName]:
+                                            combinationsSkipped[modelBaseName][categoryName] = set()
+                                        combinationsSkipped[modelBaseName][categoryName].add(attachmentIdsSet)
                                     continue
 
-                                if modelBaseName not in combinationsAdded:
-                                    combinationsAdded[modelBaseName] = {}
-                                if categoryName not in combinationsAdded[modelBaseName]:
-                                    combinationsAdded[modelBaseName][categoryName] = set()
-                                combinationsAdded[modelBaseName][categoryName].add(attachmentIdsSet)
+                                # TODO: maybe only do this if self.debug ?
+                                if True:
+                                    if modelBaseName not in combinationsAdded:
+                                        combinationsAdded[modelBaseName] = {}
+                                    if categoryName not in combinationsAdded[modelBaseName]:
+                                        combinationsAdded[modelBaseName][categoryName] = set()
+                                    combinationsAdded[modelBaseName][categoryName].add(attachmentIdsSet)
                                 comboCount += 1
 
                                 attachmentNamesString = self.exportAttachmentsSeparator.join(attachmentIds)
@@ -2484,6 +2491,58 @@ class DbdModSwapCommandRunner():
 
                     if self.debug:
                         sprintPad()
+                        sprint('Reading combosRequired...')
+
+                    def logRequiredSkip(combo, baseModels=None, category=None, isExact=False, info=''):
+                        if baseModels is None:
+                            baseModels = []
+                        def mySorted(combo):
+                            if False:
+                                return sorted([n for n in combo])
+                            return combo
+                        sprint(f"require {f'{category} ' if (category and False) else ''}combo {'=' if isExact else '⊇'} {','.join(mySorted(combo)) or '()'}: {','.join(baseModels) or '*'}{f' ({info})' if info else ''}")
+
+                    for category, combosList in combosRequired.items():
+                        if category not in categoryCombinationSubsetsRequired:
+                            categoryCombinationSubsetsRequired[category] = {}
+
+                        if category not in categoryCombinationsRequired:
+                            categoryCombinationsRequired[category] = {}
+
+                        for comboIndex, combo in enumerate(combosList):
+                            isSubset = True
+                            newCombo = set()
+                            baseModels = set()
+                            for attachmentIndex, attachment in enumerate(combo):
+                                actualAttachment = attachment
+
+                                if modelRestrictSymbol in actualAttachment:
+                                    markerIndex = actualAttachment.index(modelRestrictSymbol)
+                                    baseModelsString = actualAttachment[markerIndex + len(modelRestrictSymbol):]
+                                    if baseModelsString:
+                                        for modelId in baseModelsString.split(modelRestrictSeparator):
+                                            baseModels.add(modelId)
+                                    actualAttachment = actualAttachment[:markerIndex]
+
+                                if setEqualitySymbol in actualAttachment:
+                                    isSubset = False
+                                    markerIndex = actualAttachment.index(setEqualitySymbol)
+                                    actualAttachment = actualAttachment[:markerIndex]
+
+                                if actualAttachment:
+                                    checkAttachmentName(category, actualAttachment, f'combosRequired[{comboIndex}][{attachmentIndex}]')
+                                    newCombo.add(actualAttachment)
+
+                            frozenCombo = frozenset(newCombo)
+                            if isSubset:
+                                categoryCombinationSubsetsRequired[category][frozenCombo] = frozenset(baseModels)
+                            else:
+                                categoryCombinationsRequired[category][frozenCombo] = frozenset(baseModels)
+                            if self.debug:
+                                logRequiredSkip(frozenCombo, baseModels, isExact=not isSubset, category=category)
+
+                    if self.debug:
+                        sprintPad()
                         sprint('Reading combosToSkip...')
 
                     def logSkip(combo, baseModels=None, category=None, isExact=False, info=''):
@@ -2682,58 +2741,6 @@ class DbdModSwapCommandRunner():
                             categoryCombinationSubsetsToSkip[category][frozenCombo] = frozenset()
                             if self.debug:
                                 logSkip(frozenCombo, category=category)
-
-                    if self.debug:
-                        sprintPad()
-                        sprint('Reading combosRequired...')
-
-                    def logRequiredSkip(combo, baseModels=None, category=None, isExact=False, info=''):
-                        if baseModels is None:
-                            baseModels = []
-                        def mySorted(combo):
-                            if False:
-                                return sorted([n for n in combo])
-                            return combo
-                        sprint(f"skip {f'{category} ' if (category and False) else ''}combo {'≠' if isExact else '⊉'} {','.join(mySorted(combo)) or '()'}: {','.join(baseModels) or '*'}{f' ({info})' if info else ''}")
-
-                    for category, combosList in combosRequired.items():
-                        if category not in categoryCombinationSubsetsRequired:
-                            categoryCombinationSubsetsRequired[category] = {}
-
-                        if category not in categoryCombinationsRequired:
-                            categoryCombinationsRequired[category] = {}
-
-                        for comboIndex, combo in enumerate(combosList):
-                            isSubset = True
-                            newCombo = set()
-                            baseModels = set()
-                            for attachmentIndex, attachment in enumerate(combo):
-                                actualAttachment = attachment
-
-                                if modelRestrictSymbol in actualAttachment:
-                                    markerIndex = actualAttachment.index(modelRestrictSymbol)
-                                    baseModelsString = actualAttachment[markerIndex + len(modelRestrictSymbol):]
-                                    if baseModelsString:
-                                        for modelId in baseModelsString.split(modelRestrictSeparator):
-                                            baseModels.add(modelId)
-                                    actualAttachment = actualAttachment[:markerIndex]
-
-                                if setEqualitySymbol in actualAttachment:
-                                    isSubset = False
-                                    markerIndex = actualAttachment.index(setEqualitySymbol)
-                                    actualAttachment = actualAttachment[:markerIndex]
-
-                                if actualAttachment:
-                                    checkAttachmentName(category, actualAttachment, f'combosRequired[{comboIndex}][{attachmentIndex}]')
-                                    newCombo.add(actualAttachment)
-
-                            frozenCombo = frozenset(newCombo)
-                            if isSubset:
-                                categoryCombinationSubsetsRequired[category][frozenCombo] = frozenset(baseModels)
-                            else:
-                                categoryCombinationsRequired[category][frozenCombo] = frozenset(baseModels)
-                            if self.debug:
-                                logRequiredSkip(frozenCombo, baseModels, isExact=not isSubset, category=category)
 
                     sprintPad()
                     sprint('Exclusion rules generated.')
@@ -3580,7 +3587,7 @@ class DbdModSwapCommandRunner():
                 'attachmentsRenamed': attachmentsRenamed,
                 'attachmentsCreated': attachmentsCreated,
                 'combosAdded': combinationsAdded,
-                'combosSkipped': combinationsSkipped,
+                'combosSkipped': combinationsSkipped if self.debug else None,
                 'nameMapAlterations': {
                     'namesRemoved': nameMapNamesRemoved,
                     'namesAdded': nameMapNamesAdded,
