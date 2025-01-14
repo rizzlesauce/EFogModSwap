@@ -85,16 +85,15 @@ from dbdmodswap.helpers.umodelHelpers import (UmodelProgramStem,
                                               UmodelSaveFolderName,
                                               runUmodelCommand)
 from dbdmodswap.helpers.unrealEngineHelpers import (
-    UassetFilenameSuffix, UexpFilenameSuffix,
-    UnrealEngineCookedSplitFileExtensions, getAssetSplitFilePaths,
-    getAssetStemPathInfo, getUnrealProjectCookedContentDir)
+    UassetFilenameSuffix, UassetJsonSuffix, UbulkFilenameSuffix,
+    UexpFilenameSuffix, getAssetSplitFilePaths, getAssetStemPathInfo,
+    getUnrealProjectCookedContentDir)
 from dbdmodswap.helpers.windowsHelpers import (getIsRunningAsAdmin, openFolder,
                                                setConsoleTitle)
 from dbdmodswap.helpers.yamlHelpers import yamlDump
 from dbdmodswap.metadata.programMetaData import ConsoleTitle
 
 DefaultLauncherStartsGame = True
-
 def mergeSettings(parentData, childData):
     for key, value in childData.items():
         # TODO: merge data instead of overwriting
@@ -2218,6 +2217,8 @@ class DbdModSwapCommandRunner():
                     if os.path.isdir(extraContentDir):
                         for pathIndex, path in enumerate(listFilesRecursively(extraContentDir)):
                             extraContentPaths.append(path)
+                            if path.lower().endswith(UassetJsonSuffix):
+                                path = f'{path[:-len(UassetJsonSuffix)]}{UassetFilenameSuffix}'
                             assetPathInfo = getAssetStemPathInfo(path)
                             if assetPathInfo:
                                 if assetPathInfo['stemPath'] not in extraContentAssetPathsMap:
@@ -2847,7 +2848,16 @@ class DbdModSwapCommandRunner():
 
                         missingAssets = False
                         for asset in destPakAssets:
-                            if asset not in assetStemPathSourceFilesMap:
+                            if (
+                                asset not in assetStemPathSourceFilesMap
+                                or (
+                                    (
+                                        UexpFilenameSuffix in assetStemPathSourceFilesMap[asset]['fileSuffixes']
+                                        or UbulkFilenameSuffix in assetStemPathSourceFilesMap[asset]['fileSuffixes']
+                                    )
+                                    and UassetFilenameSuffix not in assetStemPathSourceFilesMap[asset]['fileSuffixes']
+                                )
+                            ):
                                 missingAssets = True
                                 message = f'Missing "{asset}" from source content folders'
                                 if paking:
@@ -2896,8 +2906,7 @@ class DbdModSwapCommandRunner():
 
                                                 # if UassetGUI json file exists, convert it to uasset file before copying it
                                                 if extension == UassetFilenameSuffix:
-                                                    jsonSuffix = '-json.json'
-                                                    relJsonFilePath = f'{assetPath}{jsonSuffix}'
+                                                    relJsonFilePath = f'{assetPath}{UassetJsonSuffix}'
                                                     srcJsonPath = normPath(os.path.join(assetSourceContentDir, relJsonFilePath))
                                                     if os.path.exists(srcJsonPath):
                                                         sprintPad()
@@ -3177,6 +3186,13 @@ class DbdModSwapCommandRunner():
                                                     # TODO: process non /Game/ prefixed assets?
                                                     if not packagePath.startswith(AssetPathGamePrefix) and True:
                                                         continue
+
+                                                    # TODO: only for debug
+                                                    if self.debug or True:
+                                                        if not packagePath.endswith(UassetFilenameSuffix):
+                                                            sprintPad()
+                                                            sprint(f'Non-asset package: {packagePath}')
+                                                            sprintPad()
 
                                                     assetShortStemPath = getShortenedAssetPath(packagePath)
                                                     assetStem = os.path.basename(assetShortStemPath)
