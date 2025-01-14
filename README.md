@@ -1,8 +1,8 @@
-## DbdModSwap
+## EFogModSwap
 
 ![image](https://github.com/user-attachments/assets/05100984-5561-4a55-b0aa-275170228435)
 
-A DBD mod manager CLI for swapping mods between games, paking mods from lists of cooked assets,
+An EFog mod manager CLI for swapping mods between games, paking mods from lists of cooked assets,
 and creating custom cosmetic slots by mixing game socket attachments with character models.
 
 It also includes a customized game launcher menu, as well as a tool for extracting and cloning socket attachments
@@ -16,9 +16,9 @@ from existing customization item databases and blueprint paths, and a search fea
 * search, list, and inspect all game assets, pakchunks, and CustomizationItemDB tables, looking for models, accessories, blueprints, name map entries, etc.
 * auto populate CustomizationItemDB slots with accessory combinations you've configured using inclusion and exclusion rules
 
-## [Releases](https://github.com/rizzlesauce/DbdModSwap/releases)
+## [Releases](https://github.com/rizzlesauce/EFogModSwap/releases)
 
-![DbdModSwap walkthrough](https://github.com/user-attachments/assets/6b49c0da-4e28-479d-aa21-5bc53ea09492)
+![EFogModSwap walkthrough](https://github.com/user-attachments/assets/6b49c0da-4e28-479d-aa21-5bc53ea09492)
 
 ## Menu features
 
@@ -40,10 +40,10 @@ will match it if it isn't amgiguous.
 
 ## Getting started
 
-Download the latest EXE from the Releases page. Put it in a folder named DbdModSwap (or whatever
+Download the latest EXE from the Releases page. Put it in a folder named EFogModSwap (or whatever
 you want to call it).
 
-Run `DbdModSwap.exe` with no arguments (or double click on it from file explorer) to enter the
+Run `EFogModSwap.exe` with no arguments (or double click on it from file explorer) to enter the
 interactive menu.
 
 ### Configure game folder and version
@@ -120,7 +120,7 @@ If you're wanting to mix a model from the pakchunk, the CustomizationItemDB will
 model with zero socket attachments. If it doesn't, one will need to be created or edited in UE4 or `UAssetGUI`
 to get a model slot with no attachments on it.
 
-You can either copy the `CustomizationItemDB.uasset` file to your DbdModSwap folder, or
+You can either copy the `CustomizationItemDB.uasset` file to your EFogModSwap folder, or
 leave it where it is and configure a path to it in the settings.
 
 Edit the settings and ensure that `customizationItemDbPath` is pointing to the `CustomizationItemDB.uasset` file.
@@ -214,7 +214,7 @@ visualizations (`v`), toggle searching slots (`s`), or quit the search (`q`).
 
 Compatible with:
 * Windows
-* Dbd:
+* EFog:
   * 4.4.2
   * 6.5.2
 * Cooked assets, UnrealPak, and Umodel for Unreal Engine versions:
@@ -224,12 +224,12 @@ Compatible with:
 
 ## CLI usage
 
-Run `DbdModSwap.exe -h` for detailed usage and options, or without any arguments to view the menu.
+Run `EFogModSwap.exe -h` for detailed usage and options, or without any arguments to view the menu.
 
 ## Building
 
 For starters, you'll need Python 3. Set up a venv for the project and activate it.
 Then, download all the dependencies with `pip install -r requirements.txt`.
 
-To bundle everything into a Windows executable, run `pyinstaller --onefile DbdModSwap.py`,
-which will generate a portable EXE at `.\dist\DbdModSwap.exe`.
+To bundle everything into a Windows executable, run `pyinstaller --onefile EFogModSwap.py`,
+which will generate a portable EXE at `.\dist\EFogModSwap.exe`.

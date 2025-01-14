@@ -13,25 +13,23 @@ from re import T
 import yaml
 from pynput import keyboard
 
-from dbdmodswap.helpers import tempFileHelpers
-from dbdmodswap.helpers.attachmentAnimationBlueprintHelpers import \
-    getSkeletonPath
-from dbdmodswap.helpers.attachmentBlueprintHelpers import (
-    getAnimBlueprintPath, getSkeletalMeshPath)
-from dbdmodswap.helpers.attachmentHelpers import (basicAttachmentTemplate,
-                                                  getAttachmentDisplayName,
-                                                  getAttachmentFilename)
-from dbdmodswap.helpers.consoleHelpers import (clearSprintRecording, confirm,
-                                               confirmOverwrite, esprint,
-                                               getConsoleWindow,
-                                               getSprintIsRecording,
-                                               oneLinePrinter,
-                                               promptToContinue,
-                                               replaySprintRecording, sprint,
-                                               sprintClear, sprintP, sprintPad,
-                                               sprintput, sprintSeparator,
-                                               startSprintRecording)
-from dbdmodswap.helpers.customizationItemDbHelpers import (
+from modswap.helpers import tempFileHelpers
+from modswap.helpers.attachmentAnimationBlueprintHelpers import getSkeletonPath
+from modswap.helpers.attachmentBlueprintHelpers import (getAnimBlueprintPath,
+                                                        getSkeletalMeshPath)
+from modswap.helpers.attachmentHelpers import (basicAttachmentTemplate,
+                                               getAttachmentDisplayName,
+                                               getAttachmentFilename)
+from modswap.helpers.consoleHelpers import (clearSprintRecording, confirm,
+                                            confirmOverwrite, esprint,
+                                            getConsoleWindow,
+                                            getSprintIsRecording,
+                                            oneLinePrinter, promptToContinue,
+                                            replaySprintRecording, sprint,
+                                            sprintClear, sprintP, sprintPad,
+                                            sprintput, sprintSeparator,
+                                            startSprintRecording)
+from modswap.helpers.customizationItemDbHelpers import (
     AccessoryBlueprintName, AssetNameFieldName, AttachmentBlueprintName,
     CustomizationItemDbAssetName, ECustomizationCategoryName,
     ECustomizationCategoryNamePrefix, ModelDisplayNamePropNameFieldName,
@@ -42,56 +40,53 @@ from dbdmodswap.helpers.customizationItemDbHelpers import (
     getAttachmentSocketName, getItemMeshProperty, getModelDisplayNameProperty,
     getModelIdProperty, getModelName, getSocketAttachments, getUiDataValues,
     md5Hash, setModelName, sha256Hash)
-from dbdmodswap.helpers.fileHelpers import listFilesRecursively
-from dbdmodswap.helpers.gameHelpers import (getGameIsRunning,
-                                            getGameLobbyIsRunning,
-                                            getGamePaksDir,
-                                            getGameServerIsRunning,
-                                            getGameUnrealEngineVersion,
-                                            killGame, killGameLobby,
-                                            killGameServer, openGameLauncher)
-from dbdmodswap.helpers.guiHelpers import getForegroundWindow
-from dbdmodswap.helpers.jsonHelpers import jsonDump, jsonifyDataRecursive
-from dbdmodswap.helpers.pakHelpers import (DefaultPlatform,
-                                           PakchunkFilenameSuffix,
-                                           getPakContentDir,
-                                           pakchunkRefnamePartsDictToRefname,
-                                           pakchunkRefnamePartsToRefname,
-                                           pakchunkRefnameToFilename,
-                                           pakchunkRefnameToParts,
-                                           pakchunkToSigFilePath, unrealPak,
-                                           unrealUnpak)
-from dbdmodswap.helpers.pathHelpers import getPathInfo, normPath
-from dbdmodswap.helpers.settingsHelpers import (DefaultAttachmentsDir,
-                                                DefaultGameVersion,
-                                                DefaultPakingDir,
-                                                findSettingsFiles,
-                                                getContentDirRelativePath,
-                                                getResultsFilePath,
-                                                getSettingsTemplate)
-from dbdmodswap.helpers.uassetHelpers import (AssetPathGamePrefix,
-                                              ClassNameSkeletalMesh,
-                                              ClassSuffix, ExportsFieldName,
-                                              ImportsFieldName, NameFieldName,
-                                              PackageGuidFieldName,
-                                              ValueFieldName, findEnumByType,
-                                              findNextItemByFields,
-                                              findNextItemByType, getEnumValue,
-                                              getPropertyValue,
-                                              getShortenedAssetPath,
-                                              jsonToUasset, setPropertyValue,
-                                              uassetToJson)
-from dbdmodswap.helpers.umodelHelpers import (UmodelProgramStem,
-                                              UmodelSaveFolderName,
-                                              runUmodelCommand)
-from dbdmodswap.helpers.unrealEngineHelpers import (
+from modswap.helpers.fileHelpers import listFilesRecursively
+from modswap.helpers.gameHelpers import (getGameIsRunning,
+                                         getGameLobbyIsRunning, getGamePaksDir,
+                                         getGameServerIsRunning,
+                                         getGameUnrealEngineVersion, killGame,
+                                         killGameLobby, killGameServer,
+                                         openGameLauncher)
+from modswap.helpers.guiHelpers import getForegroundWindow
+from modswap.helpers.jsonHelpers import jsonDump, jsonifyDataRecursive
+from modswap.helpers.pakHelpers import (DefaultPlatform,
+                                        PakchunkFilenameSuffix,
+                                        getPakContentDir,
+                                        pakchunkRefnamePartsDictToRefname,
+                                        pakchunkRefnamePartsToRefname,
+                                        pakchunkRefnameToFilename,
+                                        pakchunkRefnameToParts,
+                                        pakchunkToSigFilePath, unrealPak,
+                                        unrealUnpak)
+from modswap.helpers.pathHelpers import getPathInfo, normPath
+from modswap.helpers.settingsHelpers import (DefaultAttachmentsDir,
+                                             DefaultGameVersion,
+                                             DefaultPakingDir,
+                                             findSettingsFiles,
+                                             getContentDirRelativePath,
+                                             getResultsFilePath,
+                                             getSettingsTemplate)
+from modswap.helpers.uassetHelpers import (AssetPathGamePrefix,
+                                           ClassNameSkeletalMesh, ClassSuffix,
+                                           ExportsFieldName, ImportsFieldName,
+                                           NameFieldName, PackageGuidFieldName,
+                                           ValueFieldName, findEnumByType,
+                                           findNextItemByFields,
+                                           findNextItemByType, getEnumValue,
+                                           getPropertyValue,
+                                           getShortenedAssetPath, jsonToUasset,
+                                           setPropertyValue, uassetToJson)
+from modswap.helpers.umodelHelpers import (UmodelProgramStem,
+                                           UmodelSaveFolderName,
+                                           runUmodelCommand)
+from modswap.helpers.unrealEngineHelpers import (
     UassetFilenameSuffix, UassetJsonSuffix, UbulkFilenameSuffix,
     UexpFilenameSuffix, getAssetSplitFilePaths, getAssetStemPathInfo,
     getUnrealProjectCookedContentDir)
-from dbdmodswap.helpers.windowsHelpers import (getIsRunningAsAdmin, openFolder,
-                                               setConsoleTitle)
-from dbdmodswap.helpers.yamlHelpers import yamlDump
-from dbdmodswap.metadata.programMetaData import ConsoleTitle
+from modswap.helpers.windowsHelpers import (getIsRunningAsAdmin, openFolder,
+                                            setConsoleTitle)
+from modswap.helpers.yamlHelpers import yamlDump
+from modswap.metadata.programMetaData import ConsoleTitle
 
 DefaultLauncherStartsGame = True
 def mergeSettings(parentData, childData):
@@ -127,7 +122,7 @@ def readSettingsRecursive(filePath, relativeDir='.', silent=False):
     return resultData
 
 
-class DbdModSwapCommandRunner():
+class ModSwapCommandRunner():
     DryRunPrefix = '[DryRun] '
 
     def __init__(self):

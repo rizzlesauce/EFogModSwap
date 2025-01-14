@@ -1,4 +1,4 @@
-ProgramName = 'DbdModSwap'
+ProgramName = 'EFogModSwap'
 ProgramFilename = f'{ProgramName}.exe'
 Version = '0.3.2'
 Author = 'Ross Adamson'

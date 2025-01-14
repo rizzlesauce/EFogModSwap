@@ -2,7 +2,7 @@ import os
 import shutil
 from re import sub
 
-from dbdmodswap.metadata.programMetaData import ProgramName
+from modswap.metadata.programMetaData import ProgramName
 
 from .pathHelpers import normPath
 from .tempFileHelpers import openTemporaryFile
@@ -227,7 +227,7 @@ if %launchNow%==1 (
     echo Launcher
     set prevContent=1
     set launchNow=0
-    goto :{"launch" if usingServer else "launchdbd"}
+    goto :{"launch" if usingServer else "launchefog"}
 )
 
 :main
@@ -250,7 +250,7 @@ echo [6] Open Config Folder
 echo [7] {"Exit" if usingOriginalBehavior else "Quit" if usingStandaloneExitOption else f"Back to {ProgramName}"}
 echo.
 set /p op="Selection: "
-{actionIf(f"goto :{'launch' if usingServer else 'launchdbd'}", ['1', 'launch', 'launc', 'laun', 'lau', 'la', 'l', 'lnch', 'ln', 'lnc'])}
+{actionIf(f"goto :{'launch' if usingServer else 'launchefog'}", ['1', 'launch', 'launc', 'laun', 'lau', 'la', 'l', 'lnch', 'ln', 'lnc'])}
 {actionIf("goto :join", ['2', 'j', 'pubs', 'pub', 'join', 'joi', 'jo', 'jn', 'lobby'])}
 {actionIf("goto :customLobby", ['3', 'cust', 'custs', 'customs', 'custom lobby', 'customLobby', 'custom'])}
 {actionIf("goto :openPaks", ['4', 'pak', 'pk', 'pks', 'paks', 'openPaks', 'open paks'])}
@@ -278,16 +278,16 @@ echo Checking server status...
 
 if "%errorlevel%"=="0" (
     echo Already running.
-    goto :launchdbd
+    goto :launchefog
 )
 
 echo Starting server...
 {start(DefaultGameServerProgramName, title='Server', isProgram=True)}
 {doWait()}
-goto :launchdbd
+goto :launchefog
 
 
-:launchdbd
+:launchefog
 {clearScreen(soft=True)}
 echo Checking game status...
 {getCheckTaskRunningCommand(DefaultGameProgramName)}
@@ -298,7 +298,7 @@ if "%errorlevel%"=="0" (
     goto :main
 )
 
-echo Launching Dead by Daylight...
+echo Launching EFog...
 {start(DefaultGameProgramName, ['-DX12'], title='Game', isProgram=True)}
 {pause(wait=True)}
 goto :main
@@ -313,7 +313,7 @@ goto :main
 :openPaks
 {clearScreen(soft=True)}
 echo Opening Paks folder...
-set "paksPath=%~dp0DeadByDaylight\Content\Paks"
+set "paksPath=%~dp0{DefaultGameName}\Content\Paks"
 {start(f'%paksPath%')}
 {pause(wait=True)}
 goto :main
@@ -322,7 +322,7 @@ goto :main
 :openWin64
 {clearScreen(soft=True)}
 echo Opening Win64 folder...
-set "win64path=%~dp0DeadByDaylight\Binaries\Win64"
+set "win64path=%~dp0{DefaultGameBinariesRelDir}"
 {start(f'%win64path%')}
 {pause(wait=True)}
 goto :main
@@ -330,7 +330,7 @@ goto :main
 
 :openConfig
 {clearScreen(active=False)}
-set "configPath=%localappdata%\DeadByDaylight\Saved\Config\WindowsNoEditor"
+set "configPath=%localappdata%\{DefaultGameName}\Saved\Config\WindowsNoEditor"
 
 IF EXIST "%configPath%" (
 {clearScreen(soft=True, indent=1)}

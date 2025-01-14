@@ -1,6 +1,7 @@
 import requests
 
-from dbdmodswap.metadata.programMetaData import GithubProjectOwnerName, GithubProjectRepoName
+from modswap.metadata.programMetaData import (GithubProjectOwnerName,
+                                              GithubProjectRepoName)
 
 
 def getGithubProjectUrl():

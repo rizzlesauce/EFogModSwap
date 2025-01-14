@@ -1,6 +1,6 @@
 import os
 
-from dbdmodswap.helpers.pathHelpers import getPathInfo, normPath
+from modswap.helpers.pathHelpers import getPathInfo, normPath
 
 from .processHelpers import runCall
 

@@ -1,7 +1,7 @@
 import os
 import re
 
-from dbdmodswap.metadata.programMetaData import ProgramName
+from modswap.metadata.programMetaData import ProgramName
 
 from .consoleHelpers import sprint, sprintP, sprintPad
 from .pathHelpers import getPathInfo, normPath

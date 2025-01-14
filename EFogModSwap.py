@@ -6,28 +6,27 @@ Module Docstring
 import argparse
 import sys
 
-from dbdmodswap.helpers.consoleHelpers import (setConsoleWindow, sprint,
-                                               sprintPad)
-from dbdmodswap.helpers.customizationItemDbHelpers import \
+from modswap.helpers.consoleHelpers import setConsoleWindow, sprint, sprintPad
+from modswap.helpers.customizationItemDbHelpers import \
     CustomizationItemDbAssetName
-from dbdmodswap.helpers.guiHelpers import getForegroundWindow
-from dbdmodswap.helpers.pakHelpers import UnrealPakProgramFilename
-from dbdmodswap.helpers.pathHelpers import getPathInfo
-from dbdmodswap.helpers.releaseHelpers import getGithubProjectUrl
-from dbdmodswap.helpers.settingsHelpers import (DefaultAttachmentsDir,
-                                                DefaultGameVersion,
-                                                DefaultPakingDir,
-                                                DefaultSettingsPath,
-                                                getEnabledDisabledStr)
-from dbdmodswap.helpers.uassetHelpers import (UassetGuiProgramFilename,
-                                              UassetGuiProgramStem)
-from dbdmodswap.helpers.umodelHelpers import UmodelProgramFilename
-from dbdmodswap.helpers.windowsHelpers import setConsoleTitle
-from dbdmodswap.metadata.programMetaData import (Author, ConsoleTitle, License,
-                                                 ProgramName, Version)
-from dbdmodswap.runtime.runCommand import (DbdModSwapCommandRunner,
-                                           DefaultLauncherStartsGame)
-from dbdmodswap.runtime.runMenu import runMenu
+from modswap.helpers.guiHelpers import getForegroundWindow
+from modswap.helpers.pakHelpers import UnrealPakProgramFilename
+from modswap.helpers.pathHelpers import getPathInfo
+from modswap.helpers.releaseHelpers import getGithubProjectUrl
+from modswap.helpers.settingsHelpers import (DefaultAttachmentsDir,
+                                             DefaultGameVersion,
+                                             DefaultPakingDir,
+                                             DefaultSettingsPath,
+                                             getEnabledDisabledStr)
+from modswap.helpers.uassetHelpers import (UassetGuiProgramFilename,
+                                           UassetGuiProgramStem)
+from modswap.helpers.umodelHelpers import UmodelProgramFilename
+from modswap.helpers.windowsHelpers import setConsoleTitle
+from modswap.metadata.programMetaData import (Author, ConsoleTitle, License,
+                                              ProgramName, Version)
+from modswap.runtime.runCommand import (DefaultLauncherStartsGame,
+                                        ModSwapCommandRunner)
+from modswap.runtime.runMenu import runMenu
 
 __author__ = Author
 __version__ = Version
@@ -212,7 +211,7 @@ settings file, configuring `modGroups` and `modConfigs`. Finally, run `ActiveMod
     ):
         exitCode = runMenu(args, parser)
     else:
-        runner = DbdModSwapCommandRunner()
+        runner = ModSwapCommandRunner()
         exitCode = runner.runCommand(
             settingsFilePath=args.settingsFile,
             gameDir=args.gameDir,

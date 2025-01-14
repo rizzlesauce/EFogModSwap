@@ -1,35 +1,35 @@
 import os
 import platform
-import semver
 
+import semver
 import yaml
 
-from dbdmodswap.helpers.consoleHelpers import (confirm, esprint,
-                                               promptToContinue, sprint,
-                                               sprintClear, sprintPad,
-                                               sprintput, sprintSeparator)
-from dbdmodswap.helpers.gameHelpers import (KnownSupportedGameVersions,
-                                            getGameIsRunning,
-                                            getGameServerIsRunning)
-from dbdmodswap.helpers.guiHelpers import getDirectory, getFile
-from dbdmodswap.helpers.pakHelpers import UnrealPakProgramStem
-from dbdmodswap.helpers.pathHelpers import getPathInfo
-from dbdmodswap.helpers.settingsHelpers import (DefaultAttachmentsDir,
-                                                DefaultPakingDir,
-                                                DefaultSettingsPath,
-                                                findSettingsFiles,
-                                                getEnabledDisabledStr,
-                                                getResultsFilePath,
-                                                isValidSettingsFilename)
-from dbdmodswap.helpers.uassetHelpers import UassetGuiProgramStem
-from dbdmodswap.helpers.umodelHelpers import UmodelProgramStem
-from dbdmodswap.helpers.releaseHelpers import getGithubProjectReleaseUrl, getLatestReleaseVersion
-from dbdmodswap.helpers.windowsHelpers import openFile, openFolder
-from dbdmodswap.helpers.yamlHelpers import yamlDump
-from dbdmodswap.metadata.programMetaData import ProgramName, Version
-from dbdmodswap.runtime.runCommand import (DbdModSwapCommandRunner,
-                                           DefaultLauncherStartsGame,
-                                           readSettingsRecursive)
+from modswap.helpers.consoleHelpers import (confirm, esprint, promptToContinue,
+                                            sprint, sprintClear, sprintPad,
+                                            sprintput, sprintSeparator)
+from modswap.helpers.gameHelpers import (KnownSupportedGameVersions,
+                                         getGameIsRunning,
+                                         getGameServerIsRunning)
+from modswap.helpers.guiHelpers import getDirectory, getFile
+from modswap.helpers.pakHelpers import UnrealPakProgramStem
+from modswap.helpers.pathHelpers import getPathInfo
+from modswap.helpers.releaseHelpers import (getGithubProjectReleaseUrl,
+                                            getLatestReleaseVersion)
+from modswap.helpers.settingsHelpers import (DefaultAttachmentsDir,
+                                             DefaultPakingDir,
+                                             DefaultSettingsPath,
+                                             findSettingsFiles,
+                                             getEnabledDisabledStr,
+                                             getResultsFilePath,
+                                             isValidSettingsFilename)
+from modswap.helpers.uassetHelpers import UassetGuiProgramStem
+from modswap.helpers.umodelHelpers import UmodelProgramStem
+from modswap.helpers.windowsHelpers import openFile, openFolder
+from modswap.helpers.yamlHelpers import yamlDump
+from modswap.metadata.programMetaData import ProgramName, Version
+from modswap.runtime.runCommand import (DefaultLauncherStartsGame,
+                                        ModSwapCommandRunner,
+                                        readSettingsRecursive)
 
 
 def getYesOrNoStr(flag):
@@ -1209,7 +1209,7 @@ def runMenu(args, parser):
             if shouldRunMain:
                 prepActionRun()
                 sprintPad()
-                runner = DbdModSwapCommandRunner()
+                runner = ModSwapCommandRunner()
                 exitCode = runner.runCommand(
                     fromMenu=True,
                     settingsFilePath=settingsFilePath,

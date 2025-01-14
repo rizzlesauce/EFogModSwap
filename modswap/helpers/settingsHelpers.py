@@ -1,9 +1,9 @@
 import os
 
-from dbdmodswap.metadata.programMetaData import ProgramName, Version
+from modswap.metadata.programMetaData import ProgramName, Version
 
 from .customizationItemDbHelpers import CustomizationItemDbAssetName
-from .gameHelpers import getGameUnrealEngineVersion
+from .gameHelpers import DefaultGameName, getGameUnrealEngineVersion
 from .pakHelpers import UnrealPakProgramFilename, UnrealPakProgramStem
 from .pathHelpers import normPath
 from .uassetHelpers import UassetGuiProgramFilename, UassetGuiProgramStem
@@ -79,11 +79,11 @@ f'''# {ProgramName} {Version} settings.
 # Path to the game. Used for installing mods and launching the game.
 {
     f'gameDir: {kwargs["gameDir"]}' if kwargs.get('gameDir', None)
-    else '#gameDir: C:/Dead By Daylight 4.4.2'
+    else '#gameDir: C:/EFog-6.5.1'
 }
 
 # Top level folder within pakchunks and projects containing game files and cooked content.
-gameName: DeadByDaylight
+gameName: {DefaultGameName}
 
 # Game version.
 gameVersion: '{kwargs.get('gameVersion', None) or DefaultGameVersion}'
