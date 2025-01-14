@@ -339,7 +339,7 @@ combosRequired:
 
 # Asset path search terms
 #searchAssetNameMatchers:
-# looking for blueprints
+## looking for blueprints
 #- blu
 #- ab_
 #- bp_
@@ -348,6 +348,15 @@ combosRequired:
 #searchNameMapNameMatchers:
 #- AnimBlueprintGeneratedClass
 #- PerBoneBlendWeight
+
+# Look for assets that include these search terms in their json string converted with {UassetGuiProgramStem}
+#searchJsonStringMatchers:
+#- AD0820DC40D6FEF9FDFC59AEA040A776
+#- OUTFIT_QM_010_NAME
+
+# Look for assets that include these search terms in their binary data converted to ascii
+#searchBinaryAsciiMatchers:
+#- SVR_F17
 
 # Whether to search CustomizationItemDB assets for models and attachments
 searchingSlots: true
@@ -377,6 +386,8 @@ def isValidSettingsFilename(filename):
       and f'_{CustomizationItemDbAssetName}' not in filename
       and not filename.startswith('searchAssetMatches-')
       and not filename.startswith('searchNameMapMatches-')
+      and not filename.startswith('searchJsonStringMatches-')
+      and not filename.startswith('searchBinaryAsciiMatches-')
       and not filename.endswith('-results.yaml')
       and not filename.endswith('-altered.yaml')
       and not filename.endswith('-unaltered.yaml')

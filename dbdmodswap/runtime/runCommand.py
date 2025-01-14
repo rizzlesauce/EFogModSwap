@@ -1105,6 +1105,9 @@ class DbdModSwapCommandRunner():
         searchAssetNameMatchers = None
         searchNameMapNameMatchers = None
         searchJsonStringMatchers = None
+        searchBinaryAsciiMatchers = None
+
+        longestAsciiMatcher = None
 
         searchResume = {
             'pakchunkRelStemPath': None,
@@ -1114,9 +1117,13 @@ class DbdModSwapCommandRunner():
         searchAssetMatchesFile = None
         searchNameMapMatchesFile = None
         searchJsonStringMatchesFile = None
+        searchBinaryAsciiMatchesFile = None
+
+        openFiles = []
 
         def appendYamlFileResult(file, items):
             file.write(yamlDump(jsonifyDataRecursive(items)))
+            file.flush()
 
         self.dryRunPrefix = self.DryRunPrefix if self.dryRun else ''
 
@@ -1535,6 +1542,12 @@ class DbdModSwapCommandRunner():
             if searchJsonStringMatchers is None:
                 searchJsonStringMatchers = settings.get('searchJsonStringMatchers', None)
             searchJsonStringMatchers = searchJsonStringMatchers or []
+
+            if searchBinaryAsciiMatchers is None:
+                searchBinaryAsciiMatchers = settings.get('searchBinaryAsciiMatchers', None)
+            searchBinaryAsciiMatchers = searchBinaryAsciiMatchers or []
+            searchBinaryAsciiMatchers = [m.lower() for m in searchBinaryAsciiMatchers]
+            longestAsciiMatcher = next(reversed(sorted(searchBinaryAsciiMatchers, key=lambda x: len(x))), None)
 
             if self.searchingSlots is None:
                 self.searchingSlots = settings.get('searchingSlots', None)
@@ -3013,7 +3026,9 @@ class DbdModSwapCommandRunner():
                             suffix='.yaml',
                             delete=False,
                         )
+                        openFiles.append(searchAssetMatchesFile)
                         searchAssetMatchesFile.write('searchAssetMatches:\n')
+                        searchAssetMatchesFile.flush()
                         sprint(f'Created search results file: {searchAssetMatchesFile.name}')
 
                     if searchNameMapNameMatchers:
@@ -3025,7 +3040,9 @@ class DbdModSwapCommandRunner():
                             suffix='.yaml',
                             delete=False,
                         )
+                        openFiles.append(searchNameMapMatchesFile)
                         searchNameMapMatchesFile.write('searchNameMapMatches:\n')
+                        searchNameMapMatchesFile.flush()
                         sprint(f'Created search results file: {searchNameMapMatchesFile.name}')
 
                     if searchJsonStringMatchers:
@@ -3037,8 +3054,24 @@ class DbdModSwapCommandRunner():
                             suffix='.yaml',
                             delete=False,
                         )
+                        openFiles.append(searchJsonStringMatchesFile)
                         searchJsonStringMatchesFile.write('searchJsonStringMatches:\n')
+                        searchJsonStringMatchesFile.flush()
                         sprint(f'Created search results file: {searchJsonStringMatchesFile.name}')
+
+                    if searchBinaryAsciiMatchers:
+                        searchBinaryAsciiMatchesFile = tempfile.NamedTemporaryFile(
+                            mode='w',
+                            encoding='utf-8',
+                            dir=settingsFilePathInfo['dir'],
+                            prefix=f'searchBinaryAsciiMatches-{settingsFilePathInfo["stem"]}_',
+                            suffix='.yaml',
+                            delete=False,
+                        )
+                        openFiles.append(searchBinaryAsciiMatchesFile)
+                        searchBinaryAsciiMatchesFile.write('searchBinaryAsciiMatches:\n')
+                        searchBinaryAsciiMatchesFile.flush()
+                        sprint(f'Created search results file: {searchBinaryAsciiMatchesFile.name}')
 
                     sprintPad()
 
@@ -3137,7 +3170,7 @@ class DbdModSwapCommandRunner():
                                                 if line.startswith(loadingPrefix):
                                                     assetsSeenCount += 1
                                                     if assetsSeenCount == 1 or assetsSeenCount % 1000 == 0:
-                                                        sprint(f'(Seen {assetsSeenCount}{f"/{totalFileCount}" if totalFileCount else ""} assets)')
+                                                        sprint(f'(searched {assetsSeenCount}{f"/{totalFileCount}" if totalFileCount else ""} assets)')
                                                     lineParts = line[len(loadingPrefix):].split()
                                                     packagePath = lineParts[0]
 
@@ -3153,129 +3186,199 @@ class DbdModSwapCommandRunner():
                                                         prevSearchResume['assetPath'] = None
                                                     searchResume['assetPath'] = assetShortStemPath
 
-                                                    if searchAssetNameMatchers:
-                                                        assetNameMatchers = searchAssetNameMatchers.copy()
-                                                        if self.searchingSlots:
-                                                            assetNameMatchers.append(
-                                                                f'{CustomizationItemDbAssetName}{UassetFilenameSuffix}',
-                                                            )
+                                                    CustomizationItemDbFilename = f'{CustomizationItemDbAssetName}{UassetFilenameSuffix}'
+                                                    isCustomizationItemDb = packagePath.endswith(CustomizationItemDbFilename)
+                                                    shouldSearchForSlots = self.searchingSlots and isCustomizationItemDb
+
+                                                    if searchAssetNameMatchers or shouldSearchForSlots:
+                                                        assetNameMatchers = (searchAssetNameMatchers or []).copy()
+                                                        # TODO: remove
+                                                        if False:
+                                                            if self.searchingSlots:
+                                                                assetNameMatchers.append(CustomizationItemDbFilename)
                                                         # TODO: support case insensitive search (.lower())?
                                                         assetNameMatches = {term for term in assetNameMatchers if term in packagePath}
+                                                        if shouldSearchForSlots:
+                                                            assetNameMatches.add(CustomizationItemDbFilename)
                                                     else:
                                                         assetNameMatchers = None
                                                         assetNameMatches = None
 
                                                     if not assetNameMatchers or assetNameMatches:
-                                                        if True:
+                                                        if assetNameMatches:
                                                             sprintPad()
-                                                            sprint(f'{assetsSeenCount}{f"/{totalFileCount}" if totalFileCount else ""} Asset name match ("{",".join(assetNameMatches)}"): {pakchunkRelStemPath} - {assetShortStemPath}')
+                                                            sprint(f'{assetsSeenCount}{f"/{totalFileCount}" if totalFileCount else ""} Asset name match ({",".join(assetNameMatches)}): {pakchunkRelStemPath} - {assetShortStemPath}')
                                                             sprintPad()
-                                                        result = {}
-                                                        result[assetShortStemPath] = {
-                                                            'assetNameMatches': assetNameMatches,
-                                                            'assetPath': assetShortStemPath,
-                                                            'pakchunk': pakchunkRelStemPath,
-                                                        }
-                                                        if searchAssetMatchesFile:
-                                                            appendYamlFileResult(searchAssetMatchesFile, [result])
-                                                        try:
-                                                            saveFilePath = self.saveAsset(
-                                                                tempDirPathInfo['absolute'],
-                                                                tempDirPathInfo['absolute'],
-                                                                assetShortStemPath,
-                                                                silent=True,
-                                                            )
-                                                        except Exception as e:
-                                                            self.printError(e)
-                                                            saveFilePath = None
+                                                            if searchAssetMatchesFile is not None:
+                                                                result = {}
+                                                                result[assetShortStemPath] = {
+                                                                    'assetNameMatches': assetNameMatches,
+                                                                    'assetPath': assetShortStemPath,
+                                                                    'pakchunk': pakchunkRelStemPath,
+                                                                }
+                                                                appendYamlFileResult(searchAssetMatchesFile, [result])
 
-                                                        if saveFilePath and checkInput():
+                                                        if (
+                                                            searchBinaryAsciiMatchers
+                                                            or searchNameMapNameMatchers
+                                                            or searchJsonStringMatchers
+                                                            or shouldSearchForSlots
+                                                        ):
                                                             try:
-                                                                # TODO: remove
-                                                                if False:
-                                                                    sprint(f'Searching "{saveFilePath}"...')
-                                                                saveFileDir = os.path.dirname(saveFilePath)
-                                                                with tempFileHelpers.openTemporaryFile(
-                                                                    saveFileDir,
-                                                                    prefix=f'{assetStem}_',
-                                                                    suffix='.json',
-                                                                    deleteFirst=True,
-                                                                ) as saveFileJsonFile:
-                                                                    saveFileJsonPath = getPathInfo(saveFileJsonFile.name)['best']
-                                                                    try:
-                                                                        assetData = self.readDataFromUasset(
-                                                                            saveFilePath,
-                                                                            saveFileJsonPath,
-                                                                            silent=True,
-                                                                        )
-                                                                    except Exception as e:
-                                                                        assetData = None
-                                                                        self.printError(e)
+                                                                # TODO: handle packages besides *.uasset, for example *.bnk, *.xml, *.json
+                                                                saveFilePath = self.saveAsset(
+                                                                    tempDirPathInfo['absolute'],
+                                                                    tempDirPathInfo['absolute'],
+                                                                    assetShortStemPath,
+                                                                    silent=True,
+                                                                )
+                                                            except Exception as e:
+                                                                self.printError(e)
+                                                                saveFilePath = None
 
-                                                                    if assetData and checkInput(inDataJson=True):
-                                                                        if searchNameMapNameMatchers:
-                                                                            matches = {}
-                                                                            for name in assetData[NameMapFieldName]:
-                                                                                # TODO: remove
-                                                                                if False:
-                                                                                    sprint(name)
-                                                                                # TODO: support case sensitive search?
-                                                                                nameMapMatches = [m for m in searchNameMapNameMatchers if m.lower() in name.lower()]
-                                                                                if True:
-                                                                                    for matcher in nameMapMatches:
-                                                                                        if matcher not in matches:
-                                                                                            matches[matcher] = set()
-                                                                                        if name not in matches[matcher]:
-                                                                                            matches[matcher].add(name)
-                                                                                # TODO: remove
-                                                                                elif False:
-                                                                                    if nameMapMatches:
-                                                                                        if name not in matches:
-                                                                                            matches[name] = set()
-                                                                                        for matcher in nameMapMatches:
-                                                                                            matches[name].append(matcher)
-                                                                            if matches:
-                                                                                sprintPad()
-                                                                                sprint(f'{assetsSeenCount}{f"/{totalFileCount}" if totalFileCount else ""} NameMap matches ("{",".join(set(chain.from_iterable(matches.values())))}"): {pakchunkRelStemPath} - {assetShortStemPath}')
-                                                                                sprintPad()
-                                                                                result = {}
-                                                                                result[assetShortStemPath] = {
-                                                                                    'nameMapNameMatches': matches,
-                                                                                    'assetNameMatches': assetNameMatches,
-                                                                                    'assetPath': assetShortStemPath,
-                                                                                    'pakchunk': pakchunkRelStemPath,
-                                                                                }
-                                                                                appendYamlFileResult(searchNameMapMatchesFile, [result])
+                                                            if saveFilePath and checkInput():
+                                                                try:
+                                                                    # TODO: remove
+                                                                    if False:
+                                                                        sprint(f'Searching "{saveFilePath}"...')
+                                                                    saveFileDir = os.path.dirname(saveFilePath)
 
-                                                                        if searchJsonStringMatchers:
-                                                                            jsonStringLines = json.dumps(assetData, indent=2).split('\n')
-                                                                            for matcher in searchJsonStringMatchers:
-                                                                                for lineIndex, line in enumerate(jsonStringLines):
-                                                                                    # TODO: support case sensitive search?
-                                                                                    if matcher.lower() in line.lower():
-                                                                                        result = {}
-                                                                                        result[assetShortStemPath] = {
-                                                                                            'matcher': matcher,
-                                                                                            'jsonLineNumber': lineIndex + 1,
-                                                                                            'lines': [line],
-                                                                                            'assetNameMatches': assetNameMatches,
-                                                                                            'assetPath': assetShortStemPath,
-                                                                                            'pakchunk': pakchunkRelStemPath,
-                                                                                        }
-                                                                                        appendYamlFileResult(searchJsonStringMatchesFile, [result])
+                                                                    if searchBinaryAsciiMatchers:
+                                                                        ChunkSize = 4096
+                                                                        overlap = len(longestAsciiMatcher) - 1
+                                                                        # TODO: remove
+                                                                        if False:
+                                                                            sprint(f'longest matcher: {longestAsciiMatcher}')
+                                                                            sprint(f'overlap: {overlap}')
+                                                                        for path in getAssetSplitFilePaths(saveFilePath):
+                                                                            suffix = pathlib.Path(path).suffix
+                                                                            # TODO: disable searching ubulk?
+                                                                            if suffix == UbulkFilenameSuffix and False:
+                                                                                continue
 
-                                                                        if self.searchingSlots and packagePath.endswith(f'{CustomizationItemDbAssetName}{UassetFilenameSuffix}'):
-                                                                            self.processCustomizationItemDb(
-                                                                                assetData,
-                                                                                searchingGameAssets=True,
-                                                                                extractingAttachments=extractingAttachments,
-                                                                                umodelCwdPathInfo=tempDirPathInfo,
-                                                                                gamePaksDirPathInfo=getPathInfo(gamePaksDir),
-                                                                                checkInput=checkInput,
-                                                                            )
-                                                            finally:
-                                                                for path in getAssetSplitFilePaths(saveFilePath):
-                                                                    pathlib.Path.unlink(path, missing_ok=True)
+                                                                            if not os.path.isfile(path):
+                                                                                continue
+
+                                                                            with open(path, 'rb') as file:
+                                                                                previousChunkAscii = ''
+                                                                                while chunk := file.read(max(ChunkSize, len(longestAsciiMatcher))):
+                                                                                    ascii = chunk.decode('ascii', 'ignore')
+                                                                                    asciiLower = ascii.lower()
+                                                                                    # TODO: remove
+                                                                                    if False:
+                                                                                        sprint(ascii)
+                                                                                    searchAscii = previousChunkAscii + asciiLower
+                                                                                    for matcher in searchBinaryAsciiMatchers:
+                                                                                        if matcher in searchAscii:
+                                                                                            sprintPad()
+                                                                                            sprint(f'Found in ascii: {matcher} in {assetShortStemPath}{suffix}')
+                                                                                            sprintPad()
+                                                                                            if searchBinaryAsciiMatchesFile is not None:
+                                                                                                result = {}
+                                                                                                result[assetShortStemPath] = {
+                                                                                                    'matcher': matcher,
+                                                                                                    # TODO: byte number
+                                                                                                    'assetNameMatches': assetNameMatches,
+                                                                                                    'assetPath': assetShortStemPath,
+                                                                                                    'assetSuffix': suffix,
+                                                                                                    'pakchunk': pakchunkRelStemPath,
+                                                                                                }
+                                                                                                appendYamlFileResult(searchBinaryAsciiMatchesFile, [result])
+
+                                                                                    previousChunkAscii = searchAscii[-overlap:]
+
+                                                                    if (
+                                                                        searchNameMapNameMatchers
+                                                                        or searchJsonStringMatchers
+                                                                        or shouldSearchForSlots
+                                                                    ):
+                                                                        # TODO: if package suffix is *.uasset
+                                                                        with tempFileHelpers.openTemporaryFile(
+                                                                            saveFileDir,
+                                                                            prefix=f'{assetStem}_',
+                                                                            suffix='.json',
+                                                                            deleteFirst=True,
+                                                                        ) as saveFileJsonFile:
+                                                                            saveFileJsonPath = getPathInfo(saveFileJsonFile.name)['best']
+                                                                            try:
+                                                                                assetData = self.readDataFromUasset(
+                                                                                    saveFilePath,
+                                                                                    saveFileJsonPath,
+                                                                                    silent=True,
+                                                                                )
+                                                                            except Exception as e:
+                                                                                assetData = None
+                                                                                self.printError(e)
+
+                                                                            if assetData and checkInput(inDataJson=True):
+                                                                                if searchNameMapNameMatchers:
+                                                                                    matches = {}
+                                                                                    for name in assetData[NameMapFieldName]:
+                                                                                        # TODO: remove
+                                                                                        if False:
+                                                                                            sprint(name)
+                                                                                        # TODO: support case sensitive search?
+                                                                                        nameMapMatches = [m for m in searchNameMapNameMatchers if m.lower() in name.lower()]
+                                                                                        if True:
+                                                                                            for matcher in nameMapMatches:
+                                                                                                if matcher not in matches:
+                                                                                                    matches[matcher] = set()
+                                                                                                if name not in matches[matcher]:
+                                                                                                    matches[matcher].add(name)
+                                                                                        # TODO: remove
+                                                                                        elif False:
+                                                                                            if nameMapMatches:
+                                                                                                if name not in matches:
+                                                                                                    matches[name] = set()
+                                                                                                for matcher in nameMapMatches:
+                                                                                                    matches[name].append(matcher)
+                                                                                    if matches:
+                                                                                        sprintPad()
+                                                                                        sprint(f'{assetsSeenCount}{f"/{totalFileCount}" if totalFileCount else ""} NameMap matches ({",".join(set(chain.from_iterable(matches.values())))}): {pakchunkRelStemPath} - {assetShortStemPath}')
+                                                                                        sprintPad()
+                                                                                        if searchNameMapMatchesFile is not None:
+                                                                                            result = {}
+                                                                                            result[assetShortStemPath] = {
+                                                                                                'nameMapNameMatches': matches,
+                                                                                                'assetNameMatches': assetNameMatches,
+                                                                                                'assetPath': assetShortStemPath,
+                                                                                                'pakchunk': pakchunkRelStemPath,
+                                                                                            }
+                                                                                            appendYamlFileResult(searchNameMapMatchesFile, [result])
+
+                                                                                if searchJsonStringMatchers:
+                                                                                    jsonStringLines = json.dumps(assetData, indent=2).split('\n')
+                                                                                    for matcher in searchJsonStringMatchers:
+                                                                                        for lineIndex, line in enumerate(jsonStringLines):
+                                                                                            # TODO: support case sensitive search?
+                                                                                            if matcher.lower() in line.lower():
+                                                                                                sprintPad()
+                                                                                                sprint(f'Found in asset json: {matcher} in {assetShortStemPath}')
+                                                                                                sprintPad()
+                                                                                                if searchJsonStringMatchesFile is not None:
+                                                                                                    result = {}
+                                                                                                    result[assetShortStemPath] = {
+                                                                                                        'matcher': matcher,
+                                                                                                        'jsonLineNumber': lineIndex + 1,
+                                                                                                        'lines': [line],
+                                                                                                        'assetNameMatches': assetNameMatches,
+                                                                                                        'assetPath': assetShortStemPath,
+                                                                                                        'pakchunk': pakchunkRelStemPath,
+                                                                                                    }
+                                                                                                    appendYamlFileResult(searchJsonStringMatchesFile, [result])
+
+                                                                                if self.searchingSlots and packagePath.endswith(f'{CustomizationItemDbAssetName}{UassetFilenameSuffix}'):
+                                                                                    self.processCustomizationItemDb(
+                                                                                        assetData,
+                                                                                        searchingGameAssets=True,
+                                                                                        extractingAttachments=extractingAttachments,
+                                                                                        umodelCwdPathInfo=tempDirPathInfo,
+                                                                                        gamePaksDirPathInfo=getPathInfo(gamePaksDir),
+                                                                                        checkInput=checkInput,
+                                                                                    )
+                                                                finally:
+                                                                    for path in getAssetSplitFilePaths(saveFilePath):
+                                                                        pathlib.Path.unlink(path, missing_ok=True)
                                             elif streamName == 'stderr':
                                                 self.printError(f'stderr: {line}')
                                     # TODO: remove
@@ -3424,12 +3527,13 @@ class DbdModSwapCommandRunner():
         except Exception as e:
             self.printError(e)
         finally:
-            if searchAssetMatchesFile:
-                searchAssetMatchesFile.close()
-                searchAssetMatchesFile = None
-            if searchNameMapMatchesFile:
-                searchNameMapMatchesFile.close()
-                searchNameMapMatchesFile = None
+            for file in openFiles:
+                file.close()
+            openFiles = []
+            searchAssetMatchesFile = None
+            searchNameMapMatchesFile = None
+            searchJsonStringMatchesFile = None
+            searchBinaryAsciiMatchesFile = None
 
         if (
             inspecting

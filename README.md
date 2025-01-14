@@ -203,6 +203,8 @@ Using the `Search` action, you can search, visualize, and extract game assets in
 * `searchingSlots` - whether to search CustomizationItemDB entries for models and attachments
 * `searchAssetNameMatchers` - asset path search matchers
 * `searchNameMapNameMatchers` - asset name map name matchers
+* `searchJsonStringMatchers` - UassetGUI asset json matchers
+* `searchBinaryAsciiMatchers` - asset binary data ascii matchers
 * `searchResume` - details to resume a previous, unfinished search, or to start the search from a specific point
 
 When running search, you can use the keyboard to interactively pause (`p`), toggle
