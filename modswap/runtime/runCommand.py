@@ -877,7 +877,7 @@ class ModSwapCommandRunner():
                                         # Correct the blueprint property name for different game versions
                                         attachmentValues = getPropertyValue(attachment['attachmentData'])
                                         blueprintAttachmentProperty = getAttachmentBlueprintProperty(attachmentValues)
-                                        if self.gameVersion == '6.5.2':
+                                        if semver.VersionInfo.parse(self.gameVersion) >= semver.VersionInfo.parse('6.5.2'):
                                             if blueprintAttachmentProperty[NameFieldName] != AccessoryBlueprintName:
                                                 blueprintAttachmentProperty[NameFieldName] = AccessoryBlueprintName
                                                 if self.debug:
@@ -920,7 +920,7 @@ class ModSwapCommandRunner():
                     'MapProperty',
                     'IntProperty',
                     'ArrayProperty',
-                    # only on 4.27 (6.5.2)?
+                    # only on UE 4.27 (>= EFog 6.5.2)?
                     'FloatProperty',
                     'ByteProperty',
                 }:
@@ -1635,7 +1635,8 @@ class ModSwapCommandRunner():
                 isRunningAsAdmin = getIsRunningAsAdmin()
                 if getGameIsRunning(gameProgramName):
                     shouldDoIt = True
-                    asAdmin = self.gameVersion == '6.5.2' and not isRunningAsAdmin
+                    # TODO: make this configurable, so it doesn't have to run as admin if not necessary
+                    asAdmin = not isRunningAsAdmin
                     if asAdmin:
                         sprint('Must gain elevated access to kill game')
                         if self.nonInteractive:

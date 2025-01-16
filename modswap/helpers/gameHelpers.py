@@ -1,6 +1,8 @@
 import os
 import shutil
 
+import semver
+
 from modswap.metadata.programMetaData import ProgramName
 
 from .pathHelpers import normPath
@@ -91,7 +93,7 @@ def getLauncherBatchFileContent(
     usingOriginalPause = usingOriginalBehavior
     usingPageClearCls = False
     if usingServer is None:
-        usingServer = gameVersion != '6.5.2'
+        usingServer = semver.VersionInfo.parse(gameVersion) < semver.VersionInfo.parse('6.5.2')
 
     if not gameName:
         gameName = DefaultGameName
@@ -100,7 +102,7 @@ def getLauncherBatchFileContent(
         gameProgramName = getDefaultGameProgramName(gameName)
 
     if not gameVersion:
-        gameVersion = '4.4.2' if usingServer else '6.5.2'
+        gameVersion = '4.4.2' if usingServer else DefaultGameVersion
 
     gameArgs = None
     if gameVersion == '4.4.2':
