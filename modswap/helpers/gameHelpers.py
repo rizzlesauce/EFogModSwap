@@ -1,6 +1,5 @@
 import os
 import shutil
-from re import sub
 
 from modswap.metadata.programMetaData import ProgramName
 
@@ -10,27 +9,44 @@ from .windowsHelpers import (checkTaskRunning, getCheckTaskRunningCommand,
                              getPowershellCommand, getStartCommand,
                              getTaskKillCommand, taskKill)
 
+DefaultGameName = 'DeadByDaylight'
+DefaultGameVersion = '6.5.2'
+DefaultPrevGameVersion = '6.5.2'
 KnownSupportedGameVersions = [
     '4.4.2',
     '6.5.2',
+    '6.7.0',
 ]
 DefaultLauncherRelPath = '4.4.2 Launcher.bat'
-DefaultGameName = 'DeadByDaylight'
-DefaultGameBinariesRelDir = os.path.join(DefaultGameName, 'Binaries', 'Win64')
 DefaultGameServerProgramName = 'Server.exe'
-DefaultGameProgramName = f'{DefaultGameName}-Win64-Shipping.exe'
 DefaultGameLobbyProgramName = 'steam_lobby.exe'
 
 
 def getGameUnrealEngineVersion(gameVersion):
     if gameVersion == '4.4.2':
         return '4.25'
-    if gameVersion == '6.5.2':
+    if gameVersion in ('6.5.2', '6.7.0'):
         return '4.27'
 
 
+def getDefaultGameProgramName(gameName):
+    return f'{gameName}-Win64-Shipping.exe'
+
+
+def getGameBinariesRelDir(gameName):
+    return os.path.join(gameName, 'Binaries', 'Win64')
+
+
+def getDefaultGameBinariesDir(gameDir, gameName):
+    return normPath(os.path.join(gameDir, getGameBinariesRelDir(gameName)))
+
+
+def getGamePaksRelDir(gameName):
+    return os.path.join(gameName, 'Content', 'Paks')
+
+
 def getGamePaksDir(gameDir, gameName):
-    return normPath(os.path.join(gameDir, gameName, 'Content', 'Paks'))
+    return normPath(os.path.join(gameDir, getGamePaksRelDir(gameName)))
 
 
 def getGameServerIsRunning():
@@ -41,8 +57,8 @@ def getGameLobbyIsRunning():
     return checkTaskRunning(DefaultGameLobbyProgramName)
 
 
-def getGameIsRunning():
-    return checkTaskRunning(DefaultGameProgramName)
+def getGameIsRunning(programName):
+    return checkTaskRunning(programName)
 
 
 def killGameServer(asAdmin=False):
@@ -53,8 +69,8 @@ def killGameLobby(asAdmin=False):
     return taskKill(DefaultGameLobbyProgramName, asAdmin=asAdmin)
 
 
-def killGame(asAdmin=False):
-    return taskKill(DefaultGameProgramName, asAdmin=asAdmin)
+def killGame(gameProgramName, asAdmin=False):
+    return taskKill(gameProgramName, asAdmin=asAdmin)
 
 
 def getLauncherBatchFileContent(
@@ -63,6 +79,8 @@ def getLauncherBatchFileContent(
     isAdmin=False,
     usingServer=None,
     gameVersion=None,
+    gameName=None,
+    gameProgramName=None,
 ):
     cols, rows = shutil.get_terminal_size()
 
@@ -75,8 +93,22 @@ def getLauncherBatchFileContent(
     if usingServer is None:
         usingServer = gameVersion != '6.5.2'
 
-    if gameVersion is None:
+    if not gameName:
+        gameName = DefaultGameName
+
+    if not gameProgramName:
+        gameProgramName = getDefaultGameProgramName(gameName)
+
+    if not gameVersion:
         gameVersion = '4.4.2' if usingServer else '6.5.2'
+
+    gameArgs = None
+    if gameVersion == '4.4.2':
+        gameArgs = ['-DX12']
+    elif gameVersion == '6.7.0':
+        gameArgs = ['-eac-nop-loaded']
+
+    gameBinariesRelDir = getGameBinariesRelDir(gameName)
 
     def formatLines(lines, indent=0, keepEmpty=False, linesOnly=False):
         indentedLines = [f"{'    ' * indent}{line}" for line in lines if line or keepEmpty]
@@ -214,7 +246,7 @@ def getLauncherBatchFileContent(
 f'''@echo off
 setlocal enabledelayedexpansion
 title {gameVersion} Launcher - By Smirkzyy and Merky and Ross
-cd /d "{DefaultGameBinariesRelDir}{os.path.sep * 2}"
+cd /d "{gameBinariesRelDir}{os.path.sep * 2}"
 set "originalDir=%cd%"
 set prevContent=0
 set launchNow=0
@@ -290,7 +322,7 @@ goto :launchefog
 :launchefog
 {clearScreen(soft=True)}
 echo Checking game status...
-{getCheckTaskRunningCommand(DefaultGameProgramName)}
+{getCheckTaskRunningCommand(gameProgramName)}
 
 if "%errorlevel%"=="0" (
     echo Already running.
@@ -298,8 +330,8 @@ if "%errorlevel%"=="0" (
     goto :main
 )
 
-echo Launching EFog...
-{start(DefaultGameProgramName, ['-DX12'], title='Game', isProgram=True)}
+echo Launching {gameName} {gameVersion}...
+{start(gameProgramName, gameArgs, title='Game', isProgram=True)}
 {pause(wait=True)}
 goto :main
 
@@ -313,7 +345,7 @@ goto :main
 :openPaks
 {clearScreen(soft=True)}
 echo Opening Paks folder...
-set "paksPath=%~dp0{DefaultGameName}\Content\Paks"
+set "paksPath=%~dp0{gameName}\Content\Paks"
 {start(f'%paksPath%')}
 {pause(wait=True)}
 goto :main
@@ -322,7 +354,7 @@ goto :main
 :openWin64
 {clearScreen(soft=True)}
 echo Opening Win64 folder...
-set "win64path=%~dp0{DefaultGameBinariesRelDir}"
+set "win64path=%~dp0{gameBinariesRelDir}"
 {start(f'%win64path%')}
 {pause(wait=True)}
 goto :main
@@ -330,7 +362,7 @@ goto :main
 
 :openConfig
 {clearScreen(active=False)}
-set "configPath=%localappdata%\{DefaultGameName}\Saved\Config\WindowsNoEditor"
+set "configPath=%localappdata%\{gameName}\Saved\Config\WindowsNoEditor"
 
 IF EXIST "%configPath%" (
 {clearScreen(soft=True, indent=1)}
@@ -432,7 +464,7 @@ goto :survivor
 {clearScreen(active=False)}
 {stopLobbyIfRunning(failGoto='GrabSteamURL')}
 cd /d GrabSteamURL/bin/
-java -cp "GrabSteamURL4Launcher.jar;jsoup-1.17.1.jar" GrabSteamURL2 "%~dp0{DefaultGameBinariesRelDir.replace(os.path.sep, f'{os.path.sep}{os.path.sep}')}{os.path.sep}{os.path.sep}{DefaultGameLobbyProgramName}"
+java -cp "GrabSteamURL4Launcher.jar;jsoup-1.17.1.jar" GrabSteamURL2 "%~dp0{gameBinariesRelDir.replace(os.path.sep, f'{os.path.sep}{os.path.sep}')}{os.path.sep}{os.path.sep}{DefaultGameLobbyProgramName}"
 cd /d "%originalDir%"
 {pause(wait=True)}
 goto :customLobby

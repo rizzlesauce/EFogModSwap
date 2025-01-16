@@ -99,6 +99,40 @@ will automatically be read from the source pakchunk filename. When you run `List
 the source pakchunk path, the tool will list out all the assets in the pakchunk to the results file,
 and you can copy and paste that into `destPakAssets` to include all those assets into the target pakchunk.
 
+### Upgrading mods
+
+To upgrade a mod from one game version to another, use the `Upgrade` action. `prevGameVersion` (upgrading from)
+and `gameVersion` (upgrading to) settings need to be configured, as well as `unrealPakPath` and
+[uassetGuiPath](https://github.com/atenfyr/UAssetGUI). Currently, upgrading only works on cooked
+CustomizationItemDB assets for certain versions (6.5.2 -> 6.7.0). You'll also need to configure one or more
+data table assets. The simplest way is to configure `srcPakPath` to the pakchunk of the old version,
+and set `customizationItemDbPath` to `/Content/**/CustomizationItemDB`, so that it automatically upgrades
+every data table in the pakchunk. Then, run `upgrade pak`, and this will produce an upgraded pakchunk
+with the same name in your `pakingDir` folder.
+
+If you want to upgrade multiple pakchunks in sequence, you can run the menu program with additional command line
+argument `--srcPakPath <folder containing mods>/*.pak` to specify multiple pakchunks. Then, from the menu,
+run `upgrade pak` and confirm that you want to run actions on each pakchunk. Any pakchunk errors will be reported
+at the end.
+
+#### Example usage: upgrading a folder of mods from 6.5.2 to 6.7.0
+From the command line (powershell), run:
+```
+.\EFogModSwap.exe --prevGameVersion 6.5.2 --gameVersion 6.7.0 --srcPakPath <path-to-my-6.5.2-mods-folder>\*.pak --customizationItemDbPath /Content/**/CustomizationItemDB
+```
+Note the slash direction and case sensitivity in the `--customizationItemDbPath` argument.
+
+From the menu:
+* Change `Overwrite` to `always`
+* Go into `MoreOptions` submenu
+  * Configure `UassetGuiPath` and `UnrealPakPath` to the appropriate EXE tool paths
+  * Configure `SigFile` to the reference `.sig` file used for pakchunks
+  * Go `Back` to the main menu
+* Type `upgrade pak` and press Enter to run the actions
+* Confirm that you want to run actions on each pakchunk by pressing Enter
+
+Upgraded pakchunks will be output in a new folder called `paking-6.7.0`.
+
 ### Mixing socket attachments
 
 Attachment mixing is all about accessorizing character models with new combinations of accessories
@@ -125,7 +159,7 @@ leave it where it is and configure a path to it in the settings.
 
 Edit the settings and ensure that `customizationItemDbPath` is pointing to the `CustomizationItemDB.uasset` file.
 This path can be absolute or a game content path (starts with `/Content/`) relative to the unreal project or
-source pakchunk.
+source pakchunk. When relative to a source pakchunk, a wildcard can be used (`/Content/**/CustomizationItemDB`).
 
 Run `List` and the tool will try to read the `CustomizationItemDB.uasset` and list out information regarding
 the included model slots and attachments.

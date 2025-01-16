@@ -9,12 +9,13 @@ import sys
 from modswap.helpers.consoleHelpers import setConsoleWindow, sprint, sprintPad
 from modswap.helpers.customizationItemDbHelpers import \
     CustomizationItemDbAssetName
+from modswap.helpers.gameHelpers import (DefaultGameVersion,
+                                         DefaultPrevGameVersion)
 from modswap.helpers.guiHelpers import getForegroundWindow
 from modswap.helpers.pakHelpers import UnrealPakProgramFilename
 from modswap.helpers.pathHelpers import getPathInfo
 from modswap.helpers.releaseHelpers import getGithubProjectUrl
 from modswap.helpers.settingsHelpers import (DefaultAttachmentsDir,
-                                             DefaultGameVersion,
                                              DefaultPakingDir,
                                              DefaultSettingsPath,
                                              getEnabledDisabledStr)
@@ -129,6 +130,26 @@ settings file, configuring `modGroups` and `modConfigs`. Finally, run `ActiveMod
         action='store_true',
     )
     parser.add_argument(
+        '--srcPakPath',
+        help='path to source pakchunk',
+        type=str,
+    )
+    parser.add_argument(
+        '--customizationItemDbPath',
+        help='path to CustomizationItemDB datatable asset',
+        type=str,
+    )
+    parser.add_argument(
+        '--prevGameVersion',
+        help=f'previous game version (default: `{DefaultPrevGameVersion}`)',
+        type=str,
+    )
+    parser.add_argument(
+        '--upgrade',
+        help='upgrade mod data tables from `prevGameVersion` to `gameVersion`',
+        action='store_true',
+    )
+    parser.add_argument(
         '--mix',
         help='mix socket attachments with character models',
         action='store_true',
@@ -201,6 +222,7 @@ settings file, configuring `modGroups` and `modConfigs`. Finally, run `ActiveMod
         and not args.extract
         and not args.create
         and not args.rename
+        and not args.upgrade
         and not args.mix
         and not args.pak
         and not args.install
@@ -224,6 +246,10 @@ settings file, configuring `modGroups` and `modConfigs`. Finally, run `ActiveMod
             creatingAttachments=args.create,
             extractingAttachments=args.extract,
             renamingAttachmentFiles=args.rename,
+            srcPakPath=args.srcPakPath,
+            customizationItemDbPath=args.customizationItemDbPath,
+            prevGameVersion=args.prevGameVersion,
+            upgradingMods=args.upgrade,
             mixingAttachments=args.mix,
             paking=args.pak,
             installingMods=args.install,

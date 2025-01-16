@@ -3,9 +3,9 @@ import re
 
 from modswap.metadata.programMetaData import ProgramName
 
-from .consoleHelpers import sprint, sprintP, sprintPad
+from .consoleHelpers import esprint, sprint, sprintP, sprintPad
 from .pathHelpers import getPathInfo, normPath
-from .processHelpers import runCall
+from .processHelpers import runCall, runCommand
 from .tempFileHelpers import openTemporaryFile
 
 DefaultPlatform = 'WindowsNoEditor'
@@ -169,7 +169,7 @@ def unrealPak(pakDir, destPakPath, unrealPakPath, compress=True, debug=False, ex
     return responseFilePath
 
 
-def unrealUnpak(pakPath, destDir, gameName, unrealPakPath):
+def unrealUnpak(pakPath, destDir, gameName, unrealPakPath, checkInput=None, debug=False):
     pakPathInfo = getPathInfo(pakPath)
     programPathInfo = getPathInfo(unrealPakPath)
     programFilename = programPathInfo['basename']
@@ -178,12 +178,36 @@ def unrealUnpak(pakPath, destDir, gameName, unrealPakPath):
     actualDestDir = getPakContentDir(destDirPathInfo['absolute'], gameName)
     if not os.path.exists(actualDestDir):
         os.makedirs(actualDestDir, exist_ok=True)
+
     args = [
-        programPath,
         pakPathInfo['absolute'],
         '-extract',
         actualDestDir,
         # TODO: remove - doesn't seem to be needed
         #'-extracttomountpoint',
     ]
-    runCall(args, cwd=programPathInfo['dir'])
+
+    if True:
+        unpakReturnCode = None
+        unpakError = False
+        for unpakStreamName, unpakLine, unpakStop in runCommand(
+            programPath,
+            args,
+            cwd=programPathInfo['dir'],
+        ):
+            if checkInput is not None and not checkInput():
+                unpakStop()
+            if unpakStreamName == 'return_code':
+                unpakReturnCode = unpakLine
+            elif unpakStreamName == 'stderr' and 'ERROR' in unpakLine:
+                if debug:
+                    sprintPad()
+                    esprint(unpakLine)
+                    sprintPad()
+                unpakError = unpakLine
+            elif debug:
+                sprint(unpakLine)
+        if unpakReturnCode or unpakError:
+            raise ValueError(f'Failed to unpak "{pakPath}"')
+    else:
+        runCall([programPath, *args], cwd=programPathInfo['dir'])

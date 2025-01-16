@@ -1,9 +1,12 @@
 import os
 
+from modswap.helpers.gameHelpers import (DefaultGameVersion,
+                                         DefaultPrevGameVersion)
 from modswap.metadata.programMetaData import ProgramName, Version
 
 from .customizationItemDbHelpers import CustomizationItemDbAssetName
-from .gameHelpers import DefaultGameName, getGameUnrealEngineVersion
+from .gameHelpers import (DefaultGameName, getDefaultGameProgramName,
+                          getGameUnrealEngineVersion)
 from .pakHelpers import UnrealPakProgramFilename, UnrealPakProgramStem
 from .pathHelpers import normPath
 from .uassetHelpers import UassetGuiProgramFilename, UassetGuiProgramStem
@@ -15,7 +18,39 @@ DefaultSettingsPath = f'{DefaultSettingsFileStem}.yaml'
 DefaultCustomizationItemDbPath = f'{CustomizationItemDbAssetName}{UassetFilenameSuffix}'
 DefaultAttachmentsDir = 'attachments'
 DefaultPakingDir = 'paking'
-DefaultGameVersion = '4.4.2'
+
+def getGameName(settings):
+    gameName = settings.get('gameName', None) or DefaultGameName
+    return gameName
+
+
+def getGameProgramName(settings):
+    gameProgramName = settings.get('gameProgramName', None)
+    if gameProgramName:
+      return gameProgramName
+
+    gameName = getGameName(settings)
+    if gameName:
+      return getDefaultGameProgramName(gameName)
+
+
+def getGameVersion(settings):
+    return settings.get('gameVersion', None) or DefaultGameVersion
+
+
+def getPrevGameVersion(settings):
+    return settings.get('prevGameVersion', None) or DefaultPrevGameVersion
+
+
+def getUnrealEngineVersion(settings):
+    version = settings.get('unrealEngineVersion', None)
+    if version:
+        return version
+
+    gameVersion = getGameVersion(settings)
+    if gameVersion:
+        return getGameUnrealEngineVersion(gameVersion)
+
 
 def getSettingsTemplate(**kwargs):
     return (
@@ -56,7 +91,7 @@ f'''# {ProgramName} {Version} settings.
 }
 
 # If omitted, {ProgramName} will detect this based on the `gameVersion` (if it recognizes the game version)
-#unrealEngineVersion: '{kwargs.get('unrealEngineVersion', None) or getGameUnrealEngineVersion(kwargs.get('gameVersion', None) or DefaultGameVersion)}'
+#unrealEngineVersion: '{getUnrealEngineVersion(kwargs) or "''"}'
 
 ## Staging and storage folders
 
@@ -64,14 +99,14 @@ f'''# {ProgramName} {Version} settings.
 # This folder will be created if it doesn't already exist.
 {
     f'pakingDir: {kwargs["pakingDir"]}' if kwargs.get('pakingDir', None)
-    else f"pakingDir: {DefaultPakingDir}-{kwargs.get('gameVersion', None) or DefaultGameVersion}"
+    else f"pakingDir: {DefaultPakingDir}-{getGameVersion(kwargs) or 'unknownGameVersion'}"
 }
 
 # The folder used for storing socket attachment definition yaml files.
 # This folder will be created if it doesn't already exist.
 {
     f'attachmentsDir: {kwargs["attachmentsDir"]}' if kwargs.get('attachmentsDir', None)
-    else f"attachmentsDir: {DefaultAttachmentsDir}-{kwargs.get('gameVersion', None) or DefaultGameVersion}"
+    else f"attachmentsDir: {DefaultAttachmentsDir}-{getGameVersion(kwargs) or 'unknownGameVersion'}"
 }
 
 ## Game paths
@@ -83,10 +118,16 @@ f'''# {ProgramName} {Version} settings.
 }
 
 # Top level folder within pakchunks and projects containing game files and cooked content.
-gameName: {DefaultGameName}
+gameName: {getGameName(kwargs) or "''"}
 
-# Game version.
-gameVersion: '{kwargs.get('gameVersion', None) or DefaultGameVersion}'
+# Game program name
+gameProgramName: {getGameProgramName(kwargs) or "''"}
+
+# Game version
+gameVersion: '{getGameVersion(kwargs) or "''"}'
+
+# Previous game version (if upgrading mods)
+prevGameVersion: '{getPrevGameVersion(kwargs) or "''"}'
 
 ## Mod configurations
 
@@ -180,7 +221,7 @@ reservedPakchunks:
 # Path to an Unreal Engine project if you want to use cooked assets from there.
 {
     f'unrealProjectDir: {kwargs["unrealProjectDir"]}' if kwargs.get('unrealProjectDir', None)
-    else '#unrealProjectDir: C:/DeadByDaylightProject-master'
+    else f'#unrealProjectDir: C:/Modding/UEProjects/{DefaultGameName}'
 }
 
 # Path to a pakchunk pak or folder if you want to use cooked assets from there.
@@ -191,13 +232,14 @@ reservedPakchunks:
 # new asset files here when copying attachment blueprints to make new attachments.
 {
     f'extraContentDir: {kwargs["extraContentDir"]}' if kwargs.get('extraContentDir', None)
-    else f"extraContentDir: assets-{kwargs.get('gameVersion', None) or DefaultGameVersion}"
+    else f"extraContentDir: assets-{getGameVersion(kwargs) or 'unknownGameVersion'}"
 }
 
 # Path to {CustomizationItemDbAssetName} if mixing or manipulating custom cosmetic slots.
 # This can be either a UASSET file, or a JSON file saved from {UassetGuiProgramStem}.
 # If the path begins with "/Content/", it will be treated like a relative game path
-# within the pakchunk or unreal project specified above.
+# within the pakchunk or unreal project specified above. This can also be a wildcard
+# (/Content/**/CustomizationItemDB).
 #customizationItemDbPath: /Content/Data/Dlc/<Mod name>/{CustomizationItemDbAssetName}
 #customizationItemDbPath: {DefaultCustomizationItemDbPath}
 

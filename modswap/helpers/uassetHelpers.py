@@ -7,6 +7,9 @@ from .processHelpers import runCall
 ItemTypeName = '$type'
 NameFieldName = 'Name'
 ValueFieldName = 'Value'
+StructTypeFieldName = 'StructType'
+EnumTypeFieldName = 'EnumType'
+NameMapFieldName = 'NameMap'
 
 UassetGuiProgramStem = 'UAssetGUI'
 UassetGuiProgramFilename = f'{UassetGuiProgramStem}.exe'
@@ -16,8 +19,10 @@ NamePropertyDataType = 'UAssetAPI.PropertyTypes.Objects.NamePropertyData, UAsset
 StringPropertyDataType = 'UAssetAPI.PropertyTypes.Objects.StrPropertyData, UAssetAPI'
 TextPropertyDataType = 'UAssetAPI.PropertyTypes.Objects.TextPropertyData, UAssetAPI'
 SoftObjectPropertyDataType = 'UAssetAPI.PropertyTypes.Objects.SoftObjectPropertyData, UAssetAPI'
+EnumPropertyDataType = 'UAssetAPI.PropertyTypes.Objects.EnumPropertyData, UAssetAPI'
 IntPropertyDataType = 'UAssetAPI.PropertyTypes.Objects.IntPropertyData, UAssetAPI'
 ArrayPropertyDataType = 'UAssetAPI.PropertyTypes.Objects.ArrayPropertyData, UAssetAPI'
+StructPropertyDataType = 'UAssetAPI.PropertyTypes.Structs.StructPropertyData, UAssetAPI'
 ImportType = 'UAssetAPI.Import, UAssetAPI'
 ClassPackageCoreUObject = '/Script/CoreUObject'
 ClassPackageScriptEngine = '/Script/Engine'
@@ -73,10 +78,10 @@ def findEnumByType(items, enumType):
         items,
         [
             ItemTypeName,
-            'EnumType',
+            EnumTypeFieldName,
         ],
         [
-            'UAssetAPI.PropertyTypes.Objects.EnumPropertyData, UAssetAPI',
+            EnumPropertyDataType,
             enumType,
         ],
     )
@@ -87,10 +92,10 @@ def findStructByType(items, structType):
         items,
         [
             ItemTypeName,
-            'StructType',
+            StructTypeFieldName,
         ],
         [
-            'UAssetAPI.PropertyTypes.Structs.StructPropertyData, UAssetAPI',
+            StructPropertyDataType,
             structType,
         ],
     )

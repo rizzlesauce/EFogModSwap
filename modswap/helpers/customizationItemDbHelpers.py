@@ -1,9 +1,16 @@
 import hashlib
 import secrets
 
-from .uassetHelpers import (ArrayPropertyDataType, IntPropertyDataType,
+import semver
+
+from modswap.helpers.uassetHelpers import NameMapFieldName
+
+from .consoleHelpers import sprint, sprintPad
+from .uassetHelpers import (ArrayPropertyDataType, EnumPropertyDataType,
+                            ExportsFieldName, IntPropertyDataType,
                             ItemTypeName, NameFieldName, NamePropertyDataType,
                             SoftObjectPropertyDataType, StringPropertyDataType,
+                            StructPropertyDataType, StructTypeFieldName,
                             TextPropertyDataType, ValueFieldName,
                             findNextItemByFields, findStructByType,
                             getPropertyValue)
@@ -14,7 +21,6 @@ ECustomizationCategoryNamePrefix = f'{ECustomizationCategoryName}::'
 ModelDisplayNamePropNameFieldName = 'CultureInvariantString'
 AssetPathFieldName = 'AssetPath'
 AssetNameFieldName = 'AssetName'
-NameMapFieldName = 'NameMap'
 AttachmentBlueprintName = 'AttachementBlueprint'
 AccessoryBlueprintName = 'AccessoryBlueprint'
 
@@ -61,6 +67,7 @@ def setModelName(model, name):
 
 
 def getModelIdProperty(modelValues, gameVersion):
+    gameVersionSemver = semver.VersionInfo.parse(gameVersion)
     return findNextItemByFields(
         modelValues,
         [
@@ -68,9 +75,13 @@ def getModelIdProperty(modelValues, gameVersion):
             NameFieldName,
         ],
         [
-            StringPropertyDataType if gameVersion == '6.5.2' else NamePropertyDataType,
-            'ID',
-        ]
+            NamePropertyDataType if gameVersionSemver < semver.VersionInfo.parse('6.5.2') \
+                # TODO: It appears it's supposed to be StringPropertyDataType for 6.5.2, but possibly can also be NamePropertyDataType
+                else [StringPropertyDataType, NamePropertyDataType] if gameVersionSemver == semver.VersionInfo.parse('6.5.2') \
+                # >= 6.5.2
+                else StringPropertyDataType,
+            'CustomizationId' if gameVersionSemver >= semver.VersionInfo.parse('6.7.0') else 'ID',
+        ],
     )
 
 
@@ -152,7 +163,7 @@ def getAttachmentBlueprintProperty(attachmentValues, gameVersion=None):
     name = None
     if gameVersion is None:
         name = [AccessoryBlueprintName, AttachmentBlueprintName]
-    elif gameVersion == '6.5.2':
+    elif semver.VersionInfo.parse(gameVersion) >= semver.VersionInfo.parse('6.5.2'):
         name = AccessoryBlueprintName
     else:
         name = AttachmentBlueprintName
@@ -264,7 +275,7 @@ def addAllToNameMap(value, nameMapSet, path=''):
 
                 if k == ValueFieldName:
                     if itemType in {
-                        'UAssetAPI.PropertyTypes.Objects.StrPropertyData, UAssetAPI',
+                        StringPropertyDataType,
                         TextPropertyDataType,
                     }:
                         continue
@@ -294,3 +305,198 @@ def addAllToNameMap(value, nameMapSet, path=''):
     elif isinstance(value, list):
         for vIndex, v in enumerate(value):
             addAllToNameMap(v, nameMapSet, f'{path}[{vIndex}]/')
+
+
+def upgradeCustomizationItemDb(customizationItemDb, gameVersion, newGameVersion, dryRun=False, debug=False):
+    if gameVersion != '6.5.2':
+        raise ValueError('Only supports upgrading from version 6.5.2')
+    if newGameVersion != '6.7.0':
+        raise ValueError('Only supports upgrading to version 6.7.0')
+
+    replacements = [
+        {
+            'from': {
+                'structType': 'CustomizationItemData',
+                'Name': 'PrestigeUlockLevex',
+                '$type': 'UAssetAPI.PropertyTypes.Objects.IntPropertyData, UAssetAPI',
+            },
+            'to': {
+                'Name': 'PrestigeUlockLevel',
+            },
+        },
+        {
+            'from': {
+                'structType': 'CustomizationItemData',
+                'Name': 'EventIx',
+                '$type': 'UAssetAPI.PropertyTypes.Objects.NamePropertyData, UAssetAPI',
+            },
+            'to': {
+                'Name': 'EventId',
+            },
+        },
+        {
+            'from': {
+                'structType': 'CustomizationItemData',
+                'Name': 'IsInStorx',
+                '$type': 'UAssetAPI.PropertyTypes.Objects.BoolPropertyData, UAssetAPI',
+            },
+            'to': {
+                'Name': 'IsInStore',
+            },
+        },
+        {
+            'from': {
+                'structType': 'CustomizationItemData',
+                'Name': 'PlatformExclusiveFlax',
+                '$type': 'UAssetAPI.PropertyTypes.Objects.UInt32PropertyData, UAssetAPI',
+            },
+            'to': {
+                'Name': 'PlatformExclusiveFlag',
+            },
+        },
+        {
+            'from': {
+                'structType': 'CustomizationItemData',
+                'Name': 'ID',
+                '$type': [
+                    'UAssetAPI.PropertyTypes.Objects.NamePropertyData, UAssetAPI',
+                    StringPropertyDataType,
+                ],
+            },
+            'to': {
+                'Name': 'CustomizationId',
+                '$type': StringPropertyDataType,
+                'index': -1,
+            },
+        },
+        {
+            'from': {
+                'structType': 'ItemAvailability',
+                'Name': 'itemAvailabilitx',
+                '$type': EnumPropertyDataType,
+            },
+            'to': {
+                'Name': 'itemAvailability',
+            },
+        },
+        {
+            'from': {
+                'structType': 'ItemAvailability',
+                'Name': 'DLCIx',
+                '$type': StringPropertyDataType,
+            },
+            'to': {
+                'Name': 'DLCId',
+            },
+        },
+        {
+            'from': {
+                'structType': 'ItemAvailability',
+                'Name': 'CloudInventoryIx',
+                '$type': 'UAssetAPI.PropertyTypes.Objects.IntPropertyData, UAssetAPI',
+            },
+            'to': {
+                'Name': 'CloudInventoryId',
+            },
+        },
+        {
+            'from': {
+                'structType': 'ItemAvailability',
+                'Name': 'CommunityIx',
+                '$type': StringPropertyDataType,
+            },
+            'to': {
+                'Name': 'CommunityId',
+            },
+        },
+    ]
+
+    structTypeReplacementsMap = {}
+    nameReplacementMap = {}
+    for replacement in replacements:
+        nameReplacementMap[replacement['from'][NameFieldName]] = replacement
+        structType = replacement['from']['structType']
+        if structType not in structTypeReplacementsMap:
+            structTypeReplacementsMap[structType] = []
+        structTypeReplacementsMap[structType].append(replacement)
+
+    if debug:
+        sprintPad()
+        sprint('Names to replace:')
+        for name, replacement in nameReplacementMap.items():
+            sprint(f"{name} -> {replacement['to'][NameFieldName]}")
+        sprintPad()
+
+    nameMapArray = customizationItemDb[NameMapFieldName]
+    nameMapSet = set(nameMapArray)
+
+    if debug:
+        sprintPad()
+
+    for name in nameMapSet.copy():
+        if False and debug:
+            sprint(f'NameMap name: {name}')
+        replacement = nameReplacementMap.get(name, None)
+        if replacement is not None:
+            newName = replacement['to'][NameFieldName]
+            if debug:
+                sprint(f'Replacing NameMap name from `{name}` to `{newName}`')
+            nameMapSet.remove(name)
+            nameMapSet.add(newName)
+
+    if debug:
+        sprintPad()
+
+    def traverse(value, structType=None):
+        if value is None:
+            return
+
+        if isinstance(value, dict):
+            itemType = value.get(ItemTypeName, None)
+            itemName = value.get(NameFieldName, None)
+
+            if False and debug:
+                sprint(f'{structType or "[]"}.{itemType}.{itemName}')
+
+            if itemType == StructPropertyDataType:
+                traverse(value[ValueFieldName], structType=value[StructTypeFieldName])
+            elif structType in structTypeReplacementsMap:
+                for replacement in structTypeReplacementsMap[structType]:
+                    fromTypeData = replacement['from'].get(ItemTypeName, None)
+                    replacementFromTypes = [fromTypeData] if isinstance(fromTypeData, str) else fromTypeData
+                    if (
+                        replacement['from'][NameFieldName] == itemName
+                        and (
+                            not fromTypeData or (
+                                itemType in replacementFromTypes
+                            )
+                        )
+                    ):
+                        newName = replacement['to'][NameFieldName]
+                        newType = replacement['to'].get(ItemTypeName, None)
+
+                        # TODO: handle 'index' for repositioning elements?
+
+                        if debug:
+                            sprint(f'Renaming {structType}.{itemType}.{itemName} to {newType or itemType}.{newName}')
+
+                        if not dryRun:
+                            if newType is not None:
+                                value[ItemTypeName] = newType
+                            value[NameFieldName] = replacement['to'][NameFieldName]
+        elif isinstance(value, list):
+            for vIndex, v in enumerate(value):
+                traverse(v, structType=structType)
+
+    exports = customizationItemDb.get(ExportsFieldName, [])
+    for export in exports:
+        traverse(export['Table']['Data'])
+
+    if debug:
+        sprintPad()
+
+    if not dryRun:
+        nameMapArray.clear()
+        for name in nameMapSet:
+            nameMapArray.append(name)
+        nameMapArray.sort(key=lambda v: v.upper())

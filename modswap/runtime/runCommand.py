@@ -1,4 +1,5 @@
 import copy
+import glob
 import json
 import os
 import pathlib
@@ -8,8 +9,8 @@ import time
 import traceback
 import uuid
 from itertools import chain, combinations
-from re import T
 
+import semver
 import yaml
 from pynput import keyboard
 
@@ -33,15 +34,18 @@ from modswap.helpers.customizationItemDbHelpers import (
     AccessoryBlueprintName, AssetNameFieldName, AttachmentBlueprintName,
     CustomizationItemDbAssetName, ECustomizationCategoryName,
     ECustomizationCategoryNamePrefix, ModelDisplayNamePropNameFieldName,
-    NameMapFieldName, addAllToNameMap, findSocketAttachmentsStruct,
-    generateRandomHexString, getAssetPath, getAssetPathProperty,
-    getAssociatedCharacterId, getAttachmentBlueprintPath,
-    getAttachmentBlueprintProperty, getAttachmentSkeletalMeshPath,
-    getAttachmentSocketName, getItemMeshProperty, getModelDisplayNameProperty,
-    getModelIdProperty, getModelName, getSocketAttachments, getUiDataValues,
-    md5Hash, setModelName, sha256Hash)
+    addAllToNameMap, findSocketAttachmentsStruct, generateRandomHexString,
+    getAssetPath, getAssetPathProperty, getAssociatedCharacterId,
+    getAttachmentBlueprintPath, getAttachmentBlueprintProperty,
+    getAttachmentSkeletalMeshPath, getAttachmentSocketName,
+    getItemMeshProperty, getModelDisplayNameProperty, getModelIdProperty,
+    getModelName, getSocketAttachments, getUiDataValues, md5Hash, setModelName,
+    sha256Hash, upgradeCustomizationItemDb)
 from modswap.helpers.fileHelpers import listFilesRecursively
-from modswap.helpers.gameHelpers import (getGameIsRunning,
+from modswap.helpers.gameHelpers import (DefaultGameVersion,
+                                         DefaultPrevGameVersion,
+                                         KnownSupportedGameVersions,
+                                         getGameIsRunning,
                                          getGameLobbyIsRunning, getGamePaksDir,
                                          getGameServerIsRunning,
                                          getGameUnrealEngineVersion, killGame,
@@ -60,16 +64,17 @@ from modswap.helpers.pakHelpers import (DefaultPlatform,
                                         unrealUnpak)
 from modswap.helpers.pathHelpers import getPathInfo, normPath
 from modswap.helpers.settingsHelpers import (DefaultAttachmentsDir,
-                                             DefaultGameVersion,
                                              DefaultPakingDir,
                                              findSettingsFiles,
                                              getContentDirRelativePath,
+                                             getGameProgramName,
                                              getResultsFilePath,
                                              getSettingsTemplate)
 from modswap.helpers.uassetHelpers import (AssetPathGamePrefix,
                                            ClassNameSkeletalMesh, ClassSuffix,
                                            ExportsFieldName, ImportsFieldName,
-                                           NameFieldName, PackageGuidFieldName,
+                                           NameFieldName, NameMapFieldName,
+                                           PackageGuidFieldName,
                                            ValueFieldName, findEnumByType,
                                            findNextItemByFields,
                                            findNextItemByType, getEnumValue,
@@ -141,6 +146,7 @@ class ModSwapCommandRunner():
         self.umodelPath = None
         self.unrealEngineVersion = None
         self.gameVersion = None
+        self.prevGameVersion = None
         if False:
             self.importAttachmentsSeparator = 'And'
         else:
@@ -181,7 +187,7 @@ class ModSwapCommandRunner():
                 if shouldPauseIn[pauseIn]:
                     def doIt():
                         sprintSeparator()
-                        sprint(f'Paused{f" {pauseIn}" if pauseIn else ""}. Press {pauseChar} to unpause.')
+                        sprint(f'Paused{f" {pauseIn}" if pauseIn else ""}. Press {pauseChar} to unpause')
                     needsPauseNotify[pauseIn] = doIt
                 else:
                     sprintSeparator()
@@ -322,14 +328,14 @@ class ModSwapCommandRunner():
         dir = getPathInfo(dir)['best']
         if not os.path.exists(dir) and (not self.dryRun or dir not in self.dryRunDirsCreated):
             if warnIfNotExist or self.dryRun:
-                self.printWarning(f'{title or "Folder"} ("{dir}") does not exist. {self.dryRunPrefix}Creating it now.')
+                self.printWarning(f'{title or "Folder"} "{dir}" does not exist. {self.dryRunPrefix}Creating it now...')
             shouldWrite = not self.dryRun or (not self.nonInteractive and confirm(f'Create folder "{dir}" despite dry run', pad=True, emptyMeansNo=True))
             written = False
             if shouldWrite:
                 os.makedirs(dir, exist_ok=True)
                 written = True
             if (written or self.dryRun) and warnIfNotExist or self.dryRun:
-                sprint(f'{self.dryRunPrefix if not written else ""}Done writing.')
+                sprint(f'{self.dryRunPrefix if not written else ""}Done creating.')
                 sprintPad()
             if self.dryRun:
                 self.dryRunDirsCreated.add(dir)
@@ -340,14 +346,14 @@ class ModSwapCommandRunner():
 
     def readUassetDataFromJson(self, customizationItemDbJsonPath, silent=False):
         result = None
-        with oneLinePrinter() as oneLinePrint:
-            if not silent:
-                sprintPad()
-                oneLinePrint(f'Reading {CustomizationItemDbAssetName} JSON from "{customizationItemDbJsonPath}"...')
-            with open(customizationItemDbJsonPath, 'r', encoding='utf-8') as file:
-                result = json.load(file)
-            if not silent:
-                oneLinePrint('done.')
+        if not silent:
+            sprintPad()
+            sprint(f'Reading {CustomizationItemDbAssetName} JSON from "{customizationItemDbJsonPath}"...')
+        with open(customizationItemDbJsonPath, 'r', encoding='utf-8') as file:
+            result = json.load(file)
+        if not silent:
+            sprint('Done reading.')
+            sprintPad()
         return result
 
     def readDataFromUasset(
@@ -360,12 +366,12 @@ class ModSwapCommandRunner():
         dryRunHerePrefix = self.DryRunPrefix if dryRunHere else ''
         if not silent:
             sprintPad()
-            sprint(f'{dryRunHerePrefix}Converting "{customizationItemDbPath}" to JSON, writing "{customizationItemDbJsonPath}"')
+            sprint(f'{dryRunHerePrefix}Converting "{customizationItemDbPath}" to JSON, writing "{customizationItemDbJsonPath}"...')
 
         if not os.path.exists(self.uassetGuiPath):
-            raise ValueError(f'`uassetGuiPath` ("{self.uassetGuiPath})" does not exist')
+            raise ValueError(f'`uassetGuiPath` "{self.uassetGuiPath}" does not exist')
 
-        shouldWrite = not dryRunHere or (not self.nonInteractive and confirm(f'write {CustomizationItemDbAssetName} JSON ("{customizationItemDbJsonPath}") despite dry run, to read data', pad=True, emptyMeansNo=True))
+        shouldWrite = not dryRunHere or (not self.nonInteractive and confirm(f'write {CustomizationItemDbAssetName} JSON "{customizationItemDbJsonPath}" despite dry run, to read data', pad=True, emptyMeansNo=True))
         written = False
         if shouldWrite:
             if self.readyToWrite(customizationItemDbJsonPath, overwrite=True, dryRunHere=False):
@@ -389,7 +395,9 @@ class ModSwapCommandRunner():
             raise ValueError(f'Unable to convert "{customizationItemDbPath}" to JSON')
 
     def processCustomizationItemDb(self,
-        customizationItemDb,
+        asset,
+        inspecting=False,
+        upgrading=False,
         mixingAttachments=False,
         extractingAttachments=False,
         attachmentsCreated=None,
@@ -398,13 +406,7 @@ class ModSwapCommandRunner():
         categoryCombinationSubsetsToSkip=None,
         categoryCombinationsRequired=None,
         categoryCombinationSubsetsRequired=None,
-        combinationsSkipped=None,
-        combinationsAdded=None,
-        nameMapArray=None,
-        nameMapSet=None,
         settingsPathInfo=None,
-        customizationItemDbPathInfo=None,
-        customizationItemDbContentDirRelativePath=None,
         assetStemPathSourceFilesMap=None,
         umodelCwdPathInfo=None,
         gamePaksDirPathInfo=None,
@@ -424,478 +426,486 @@ class ModSwapCommandRunner():
             categoryCombinationsRequired = {}
         if categoryCombinationSubsetsRequired is None:
             categoryCombinationSubsetsRequired = {}
-        if combinationsSkipped is None:
-            combinationsSkipped = {}
-        if combinationsAdded is None:
-            combinationsAdded = {}
-        if nameMapArray is None:
-            nameMapArray = []
-        if nameMapSet is None:
-            nameMapSet = set()
         if checkInput is None:
             checkInput = lambda **kwargs: True
 
-        exports = customizationItemDb['Exports']
-        dataTableExport = findNextItemByType(exports, 'UAssetAPI.ExportTypes.DataTableExport, UAssetAPI')
-        models = dataTableExport['Table']['Data']
-        modelsCopy = models.copy()
-        if mixingAttachments:
-            models.clear()
+        customizationItemDb = asset['data']
+        customizationItemDbPathInfo = asset['pathInfo']
+        customizationItemDbContentDirRelativePath = asset.get('contentDirRelativePath', None)
+
         sprintPad()
-        sprint(f'Reading {len(modelsCopy)} models...')
-        for modelIndex, model in enumerate(modelsCopy):
-            if not checkInput():
-                break
-            try:
-                modelName = getModelName(model)
-                sprintPad()
-                sprint(f'{modelIndex + 1} - reading {modelName}...')
+        sprint(f'Processing CustomizationItemDB "{customizationItemDbPathInfo["best"]}"...')
+        sprintPad()
 
-                modelValues = getPropertyValue(model)
+        if upgrading:
+            sprintPad()
+            sprint(f'{self.dryRunPrefix}Upgrading CustomizationItemDB at "{customizationItemDbPathInfo["best"]}" from game version {self.prevGameVersion} to {self.gameVersion}...')
+            upgradeCustomizationItemDb(customizationItemDb, self.prevGameVersion, self.gameVersion, dryRun=False, debug=self.debug)
+            sprint(f'{self.dryRunPrefix}Done upgrading.')
+            sprintPad()
+            asset[f'upgraded-{self.prevGameVersion}-{self.gameVersion}'] = True
 
-                modelIdProp = getModelIdProperty(modelValues, self.gameVersion)
-                modelId = getPropertyValue(modelIdProp)
-                if modelId != modelName:
-                    self.printWarning(f'ID ({modelId}) does not match model name ({modelName})')
+        if inspecting or searchingGameAssets or mixingAttachments or extractingAttachments:
+            exports = customizationItemDb[ExportsFieldName]
+            dataTableExport = findNextItemByType(exports, 'UAssetAPI.ExportTypes.DataTableExport, UAssetAPI')
+            models = dataTableExport['Table']['Data']
+            modelsCopy = models.copy()
+            if mixingAttachments:
+                models.clear()
+                combinationsSkipped = {}
+                combinationsAdded = {}
+                asset['combinationsAdded'] = combinationsAdded
+                asset['combinationsSkipped'] = combinationsSkipped
 
-                modelNameParts = modelName.split('_')
-                modelBaseName = modelNameParts.pop(0)
-                sprint(f'Base Name: {modelBaseName}')
+            sprintPad()
+            sprint(f'Reading {len(modelsCopy)} models...')
+            for modelIndex, model in enumerate(modelsCopy):
+                if not checkInput():
+                    break
+                try:
+                    modelName = getModelName(model)
+                    sprintPad()
+                    sprint(f'{modelIndex + 1} - reading {modelName}...')
 
-                meshAssetShortStemPath = getShortenedAssetPath(
-                    getAssetPath(
-                        getPropertyValue(
-                            getItemMeshProperty(modelValues),
+                    modelValues = getPropertyValue(model)
+
+                    modelIdProp = getModelIdProperty(modelValues, self.gameVersion)
+                    modelId = getPropertyValue(modelIdProp)
+                    if modelId != modelName:
+                        self.printWarning(f'ID ({modelId}) does not match model name ({modelName})')
+
+                    modelNameParts = modelName.split('_')
+                    modelBaseName = modelNameParts.pop(0)
+                    sprint(f'Base Name: {modelBaseName}')
+
+                    meshAssetShortStemPath = getShortenedAssetPath(
+                        getAssetPath(
+                            getPropertyValue(
+                                getItemMeshProperty(modelValues),
+                            ),
                         ),
-                    ),
-                )
-                sprint(f'Mesh: {meshAssetShortStemPath or "(none)"}')
+                    )
+                    sprint(f'Mesh: {meshAssetShortStemPath or "(none)"}')
 
-                associatedCharacterId = getAssociatedCharacterId(modelValues)
-                sprint(f"Character ID: {'(none)' if associatedCharacterId is None else associatedCharacterId}")
+                    associatedCharacterId = getAssociatedCharacterId(modelValues)
+                    sprint(f"Character ID: {'(none)' if associatedCharacterId is None else associatedCharacterId}")
 
-                uiDataValues = getUiDataValues(modelValues)
+                    uiDataValues = getUiDataValues(modelValues)
 
-                modelDisplayNameProp = getModelDisplayNameProperty(uiDataValues)
-                modelDisplayName = modelDisplayNameProp[ModelDisplayNamePropNameFieldName]
-                sprint(f"Display Name: {modelDisplayName or '(none)'}")
+                    modelDisplayNameProp = getModelDisplayNameProperty(uiDataValues)
+                    modelDisplayName = modelDisplayNameProp[ModelDisplayNamePropNameFieldName]
+                    sprint(f"Display Name: {modelDisplayName or '(none)'}")
 
-                categoryEnum = findEnumByType(modelValues, ECustomizationCategoryName)
-                categoryFullName = getEnumValue(categoryEnum)
+                    categoryEnum = findEnumByType(modelValues, ECustomizationCategoryName)
+                    categoryFullName = getEnumValue(categoryEnum)
 
-                categoryName = categoryFullName[len(ECustomizationCategoryNamePrefix):]
-                shortCategoryName = None
-                if categoryName == 'SurvivorTorso':
-                    shortCategoryName = 'Torso'
-                elif categoryName == f'SurvivorLegs':
-                    shortCategoryName = 'Legs'
-                elif categoryName == f'SurvivorHead':
-                    shortCategoryName = 'Head'
-                elif categoryName == 'KillerBody':
-                    shortCategoryName = 'Body'
-                elif categoryName == 'KillerHead':
-                    shortCategoryName = 'Head'
-                elif categoryName == 'KillerWeapon':
-                    shortCategoryName = 'Weapon'
-                elif categoryName == 'Charm':
-                    shortCategoryName = 'Charm'
-                else:
-                    raise ValueError(f'Unsupported customization category: {categoryFullName}')
-
-                sprint(f'Category: {categoryName}')
-
-                socketAttachments = getSocketAttachments(modelValues)
-                sprint(f'Attachments: {len(socketAttachments)}')
-
-                if len(socketAttachments):
-                    # TODO: ignore this - it's not a reliable way of determining attachment names
-                    otherNames = [n for n in modelNameParts if n.lower() not in {'torso', 'legs', 'head', 'body', 'weapon', 'outfits', 'charm'}]
-                    otherNamesString = '_'.join(otherNames)
-                    attachmentNames = otherNamesString.split(self.importAttachmentsSeparator) if otherNamesString else []
-
-                    if self.debug:
-                        sprint(f"Potential attachments names: {', '.join(attachmentNames) if attachmentNames else '(unknown)'}")
-
-                    attachmentDisplayNamesString = ''
-                    openParenIndex = modelDisplayName.find('(')
-                    if openParenIndex > -1:
-                        closeParenIndex = modelDisplayName.find(')', openParenIndex + 1)
-                        if closeParenIndex > -1:
-                            attachmentDisplayNamesString = modelDisplayName[(openParenIndex + 1):closeParenIndex]
-
-                    if self.debug:
-                        sprint(f'Potential attachments display names string: {attachmentDisplayNamesString}')
-
-                    attachmentDisplayNames = attachmentDisplayNamesString.split(', ') if attachmentDisplayNamesString else []
-                    if self.debug:
-                        sprint(f"Potential attachments display names: {', '.join(attachmentDisplayNames) if attachmentDisplayNames else '(unknown)'}")
-
-                    if (
-                        len(attachmentDisplayNames) == len(socketAttachments)
-                        or (len(attachmentDisplayNames) > 1 and len(socketAttachments) == 1)
-                    ):
-                        attachmentNames = [''.join([word.capitalize() for word in displayName.split()]) for displayName in attachmentDisplayNames]
-                        # TODO: try to handle cases with aggregate attachments?
-                        if len(attachmentDisplayNames) > 1 and len(socketAttachments) == 1:
-                            attachmentNames = ['And'.join(attachmentNames)]
-                            attachmentDisplayNames = [', '.join(attachmentDisplayNames)]
-
-                    if len(attachmentNames) != len(socketAttachments):
-                        attachmentNames = []
-
-                    if len(attachmentDisplayNames) != len(socketAttachments):
-                        attachmentDisplayNames = []
-
-                    if self.debug:
-                        sprint(f"Synthesized attachments names: {', '.join(attachmentNames) if attachmentNames else '(unknown)'}")
-
-                    if extractingAttachments or searchingGameAssets:
-                        for attachmentIndex, attachmentData in enumerate(socketAttachments):
-                            if not checkInput():
-                                break
-
-                            animBlueprintShortStemPath = None
-                            meshShortStemPath = None
-
-                            attachmentValues = getPropertyValue(attachmentData, [])
-                            socketName = getAttachmentSocketName(attachmentValues)
-                            skeletalMeshShortStemPath = getShortenedAssetPath(
-                                getAttachmentSkeletalMeshPath(attachmentValues),
-                            )
-                            blueprintPath = getAttachmentBlueprintPath(attachmentValues, self.gameVersion)
-                            blueprintShortStemPath = getShortenedAssetPath(blueprintPath)
-                            sprint(f'- Attachment {attachmentIndex + 1}:{f" {socketName}" if socketName else ""}{f" {blueprintShortStemPath}" if blueprintPath else ""}{f" {skeletalMeshShortStemPath}" if skeletalMeshShortStemPath else ""}')
-                            if blueprintPath is None and skeletalMeshShortStemPath is None:
-                                sprintP(attachmentValues)
-
-                            if searchingGameAssets and blueprintPath and self.umodelPath and umodelCwdPathInfo and gamePaksDirPathInfo:
-                                # TODO: remove
-                                if False:
-                                    sprint('Reading attachment blueprint...')
-                                # try to load the attachment blueprint to discover the mesh
-                                try:
-                                    saveFilePath = self.saveAsset(
-                                        gamePaksDirPathInfo['absolute'],
-                                        umodelCwdPathInfo['absolute'],
-                                        blueprintShortStemPath,
-                                        silent=True,
-                                    )
-                                except Exception as e:
-                                    self.printError(e)
-                                    saveFilePath = None
-
-                                if saveFilePath and checkInput():
-                                    try:
-                                        # TODO: remove
-                                        if False:
-                                            sprint(f'Searching "{saveFilePath}"...')
-                                        saveFileDir = os.path.dirname(saveFilePath)
-                                        saveFileStem = os.path.basename(saveFilePath).removesuffix(UassetFilenameSuffix)
-                                        with tempFileHelpers.openTemporaryFile(
-                                            saveFileDir,
-                                            prefix=f'{saveFileStem}_',
-                                            suffix='.json',
-                                            deleteFirst=True,
-                                        ) as saveFileJsonFile:
-                                            saveFileJsonPath = getPathInfo(saveFileJsonFile.name)['best']
-                                            try:
-                                                blueprintData = self.readDataFromUasset(
-                                                    saveFilePath,
-                                                    saveFileJsonPath,
-                                                    silent=True,
-                                                )
-                                            except Exception as e:
-                                                blueprintData = None
-                                                self.printError(e)
-
-                                            if blueprintData:
-                                                if False:
-                                                    for name in blueprintData[NameMapFieldName]:
-                                                        if not checkInput():
-                                                            break
-                                                        sprint(name)
-                                                imports = blueprintData.get(ImportsFieldName, [])
-                                                animBlueprintShortStemPath = getShortenedAssetPath(
-                                                    getAnimBlueprintPath(imports)
-                                                )
-                                                sprint(f'  - Animation blueprint: {animBlueprintShortStemPath or "(none)"}')
-                                                meshShortStemPath = getShortenedAssetPath(
-                                                    getSkeletalMeshPath(imports)
-                                                )
-                                                sprint(f'  - Attachment mesh: {meshShortStemPath or "(none)"}')
-                                                if meshShortStemPath and self.shouldView:
-                                                    fullMeshPath = f'{"" if meshShortStemPath.startswith("/") else AssetPathGamePrefix}{meshShortStemPath}{UassetFilenameSuffix}'
-                                                    viewReturnCode = None
-                                                    viewError = False
-                                                    for viewStreamName, viewLine, viewStop in runUmodelCommand(
-                                                        self.umodelPath,
-                                                        [
-                                                            '-view',
-                                                            f'-game={self.getUmodelGameTag()}',
-                                                            f'-path={gamePaksDirPathInfo["absolute"]}',
-                                                            fullMeshPath,
-                                                            # TODO: remove
-                                                            #ClassNameSkeletalMesh,
-                                                        ],
-                                                        cwd=umodelCwdPathInfo['absolute'],
-                                                        debug=self.debug,
-                                                    ):
-                                                        if not checkInput():
-                                                            viewStop()
-                                                        if viewStreamName == 'return_code':
-                                                            viewReturnCode = viewLine
-                                                        elif viewStreamName == 'stderr' and 'ERROR' in viewLine:
-                                                            self.printError(viewLine)
-                                                            viewError = viewLine
-                                                        elif self.debug:
-                                                            sprint(viewLine)
-                                                    if viewReturnCode or viewError:
-                                                        self.printError(f'Failed to view "{fullMeshPath}"')
-
-                                            checkInput(inBlueprintJson=True)
-                                    finally:
-                                        for path in getAssetSplitFilePaths(saveFilePath):
-                                            pathlib.Path.unlink(path, missing_ok=True)
-
-                            nameIsh = socketName
-                            if not nameIsh and blueprintPath:
-                                nameIsh = os.path.basename(blueprintPath)
-                            if not nameIsh and skeletalMeshShortStemPath:
-                                nameIsh = os.path.basename(skeletalMeshShortStemPath)
-                            if not nameIsh and modelDisplayName:
-                                nameIsh = modelDisplayName.replace(' ', '_')
-                            if not nameIsh and modelName:
-                                nameIsh = modelName
-
-                            displayNameIsh = modelDisplayName
-                            if not displayNameIsh and modelName:
-                                displayNameIsh = modelName
-                            if not displayNameIsh and nameIsh:
-                                displayNameIsh = nameIsh
-
-                            if extractingAttachments:
-                                if attachmentIndex < len(attachmentNames):
-                                    attachmentId = attachmentNames[attachmentIndex]
-                                else:
-                                    attachmentId = '_'.join([part for part in [nameIsh, f'{attachmentIndex + 1}'] if part])
-
-                                if attachmentIndex < len(attachmentDisplayNames):
-                                    attachmentDisplayName = attachmentDisplayNames[attachmentIndex]
-                                else:
-                                    attachmentDisplayName = ' '.join(
-                                        part for part in [
-                                            displayNameIsh,
-                                            'Attachment' if len(socketAttachments) > 1 else '',
-                                            f'{attachmentIndex + 1}/{len(socketAttachments)}' if len(socketAttachments) > 1 else '',
-                                        ] if part
-                                    )
-
-                                filename = f'SocketAttachment_{modelBaseName}_{shortCategoryName}_{attachmentId}.yaml'
-                                filePath = getPathInfo(os.path.join(self.ensureAttachmentsDir(), filename))['best']
-
-                                if os.path.exists(filePath):
-                                    self.printWarning(f'Skipping attachment {attachmentIndex + 1} (file already exists): "{filePath}"', pad=False)
-                                else:
-                                    sprint(f'{self.dryRunPrefix}Extracting attachment {attachmentIndex + 1}: {attachmentId} ({attachmentDisplayName}) to "{filePath}"')
-
-                                    attachmentInfo = {
-                                        'attachmentId': attachmentId,
-                                        'modelCategory': categoryName,
-                                        'displayName': attachmentDisplayName,
-                                        'associatedModelId': modelName,
-                                        'associatedCharacterId': associatedCharacterId,
-                                        'associatedCharacterMesh': meshAssetShortStemPath,
-                                        'animationBlueprint': animBlueprintShortStemPath,
-                                        'attachmentMesh': meshShortStemPath,
-                                        'attachmentData': attachmentData,
-                                    }
-
-                                    if not self.dryRun:
-                                        with open(filePath, 'w', encoding='utf-8') as file:
-                                            yamlDump(attachmentInfo, file)
-
-                                    attachmentsCreated.append(filePath)
-                elif mixingAttachments:
-                    shouldAddThisModel = True
-                    emptySet = frozenset()
-
-                    if shouldAddThisModel:
-                        if emptySet in categoryCombinationsToSkip.get(categoryName, {}):
-                            baseModels = categoryCombinationsToSkip[categoryName][emptySet]
-                            if not baseModels or modelBaseName in baseModels:
-                                shouldAddThisModel = False
-
-                    if shouldAddThisModel:
-                        if emptySet in categoryCombinationSubsetsToSkip.get(categoryName, {}):
-                            baseModels = categoryCombinationsToSkip[categoryName][emptySet]
-                            if not baseModels or modelBaseName in baseModels:
-                                shouldAddThisModel = False
-
-                    if shouldAddThisModel:
-                        sprintPad()
-                        sprint(f'Adding base model {categoryName}::{modelBaseName}')
-                        sprintPad()
-                        models.append(model)
+                    categoryName = categoryFullName[len(ECustomizationCategoryNamePrefix):]
+                    shortCategoryName = None
+                    if categoryName == 'SurvivorTorso':
+                        shortCategoryName = 'Torso'
+                    elif categoryName == f'SurvivorLegs':
+                        shortCategoryName = 'Legs'
+                    elif categoryName == f'SurvivorHead':
+                        shortCategoryName = 'Head'
+                    elif categoryName == 'KillerBody':
+                        shortCategoryName = 'Body'
+                    elif categoryName == 'KillerHead':
+                        shortCategoryName = 'Head'
+                    elif categoryName == 'KillerWeapon':
+                        shortCategoryName = 'Weapon'
+                    elif categoryName == 'Charm':
+                        shortCategoryName = 'Charm'
                     else:
-                        sprintPad()
-                        sprint(f'Skipping base model {categoryName}::{modelBaseName}')
-                        sprintPad()
+                        raise ValueError(f'Unsupported customization category: {categoryFullName}')
 
-                    if categoryName in attachmentsToMix:
-                        modelDisplayNameBase = modelDisplayName
+                    sprint(f'Category: {categoryName}')
+
+                    socketAttachments = getSocketAttachments(modelValues)
+                    sprint(f'Attachments: {len(socketAttachments)}')
+
+                    if len(socketAttachments):
+                        # TODO: ignore this - it's not a reliable way of determining attachment names
+                        otherNames = [n for n in modelNameParts if n.lower() not in {'torso', 'legs', 'head', 'body', 'weapon', 'outfits', 'charm'}]
+                        otherNamesString = '_'.join(otherNames)
+                        attachmentNames = otherNamesString.split(self.importAttachmentsSeparator) if otherNamesString else []
+
+                        if self.debug:
+                            sprint(f"Potential attachments names: {', '.join(attachmentNames) if attachmentNames else '(unknown)'}")
+
+                        attachmentDisplayNamesString = ''
                         openParenIndex = modelDisplayName.find('(')
                         if openParenIndex > -1:
                             closeParenIndex = modelDisplayName.find(')', openParenIndex + 1)
                             if closeParenIndex > -1:
-                                modelDisplayNameBase = modelDisplayName[:openParenIndex].rstrip()
+                                attachmentDisplayNamesString = modelDisplayName[(openParenIndex + 1):closeParenIndex]
 
-                        comboCount = 0
+                        if self.debug:
+                            sprint(f'Potential attachments display names string: {attachmentDisplayNamesString}')
 
-                        attachmentsForCategory = attachmentsToMix[categoryName]
-                        sprintPad()
-                        sprint(f'Mixing {len(attachmentsForCategory)} attachments into combinations...')
-                        sprintPad()
-                        for r in range(1, len(attachmentsForCategory) + 1):
-                            if not checkInput():
-                                break
+                        attachmentDisplayNames = attachmentDisplayNamesString.split(', ') if attachmentDisplayNamesString else []
+                        if self.debug:
+                            sprint(f"Potential attachments display names: {', '.join(attachmentDisplayNames) if attachmentDisplayNames else '(unknown)'}")
 
-                            # TODO: use names instead of values in combinations()
-                            for combo in combinations(attachmentsForCategory.values(), r):
+                        if (
+                            len(attachmentDisplayNames) == len(socketAttachments)
+                            or (len(attachmentDisplayNames) > 1 and len(socketAttachments) == 1)
+                        ):
+                            attachmentNames = [''.join([word.capitalize() for word in displayName.split()]) for displayName in attachmentDisplayNames]
+                            # TODO: try to handle cases with aggregate attachments?
+                            if len(attachmentDisplayNames) > 1 and len(socketAttachments) == 1:
+                                attachmentNames = ['And'.join(attachmentNames)]
+                                attachmentDisplayNames = [', '.join(attachmentDisplayNames)]
+
+                        if len(attachmentNames) != len(socketAttachments):
+                            attachmentNames = []
+
+                        if len(attachmentDisplayNames) != len(socketAttachments):
+                            attachmentDisplayNames = []
+
+                        if self.debug:
+                            sprint(f"Synthesized attachments names: {', '.join(attachmentNames) if attachmentNames else '(unknown)'}")
+
+                        if extractingAttachments or searchingGameAssets:
+                            for attachmentIndex, attachmentData in enumerate(socketAttachments):
                                 if not checkInput():
                                     break
 
-                                attachmentIds = [a['attachmentId'] for a in combo]
+                                animBlueprintShortStemPath = None
+                                meshShortStemPath = None
 
-                                attachmentIdsSet = frozenset(attachmentIds)
+                                attachmentValues = getPropertyValue(attachmentData, [])
+                                socketName = getAttachmentSocketName(attachmentValues)
+                                skeletalMeshShortStemPath = getShortenedAssetPath(
+                                    getAttachmentSkeletalMeshPath(attachmentValues),
+                                )
+                                blueprintPath = getAttachmentBlueprintPath(attachmentValues, self.gameVersion)
+                                blueprintShortStemPath = getShortenedAssetPath(blueprintPath)
+                                sprint(f'- Attachment {attachmentIndex + 1}:{f" {socketName}" if socketName else ""}{f" {blueprintShortStemPath}" if blueprintPath else ""}{f" {skeletalMeshShortStemPath}" if skeletalMeshShortStemPath else ""}')
+                                if blueprintPath is None and skeletalMeshShortStemPath is None:
+                                    sprintP(attachmentValues)
 
-                                shouldSkipCombo = None
-
-                                if shouldSkipCombo is None:
-                                    baseModels = categoryCombinationsToSkip.get(categoryName, {}).get(attachmentIdsSet, None)
-                                    if baseModels is not None:
-                                        if len(baseModels) == 0 or modelBaseName in baseModels:
-                                            shouldSkipCombo = True
-
-                                if shouldSkipCombo is None:
-                                    for combosToSkip, baseModels in categoryCombinationSubsetsToSkip.get(categoryName, {}).items():
-                                        if (len(baseModels) == 0 or modelBaseName in baseModels) and combosToSkip <= attachmentIdsSet:
-                                            shouldSkipCombo = True
-                                            break
-
-                                if shouldSkipCombo is None:
-                                    for combosRequired, baseModels in categoryCombinationsRequired.get(categoryName, {}).items():
-                                        if len(baseModels) and modelBaseName not in baseModels:
-                                            continue
-
-                                        if combosRequired != attachmentIdsSet:
-                                            shouldSkipCombo = True
-                                            break
-
-                                if shouldSkipCombo is None:
-                                    for combosRequired, baseModels in categoryCombinationSubsetsRequired.get(categoryName, {}).items():
-                                        if len(baseModels) and modelBaseName not in baseModels:
-                                            continue
-
-                                        if not combosRequired <= attachmentIdsSet:
-                                            shouldSkipCombo = True
-                                            break
-
-                                if shouldSkipCombo is None:
-                                    # allow all by default
-                                    shouldSkipCombo = False
-
-                                if shouldSkipCombo:
-                                    if self.debug:
-                                        if modelBaseName not in combinationsSkipped:
-                                            combinationsSkipped[modelBaseName] = {}
-                                        if categoryName not in combinationsSkipped[modelBaseName]:
-                                            combinationsSkipped[modelBaseName][categoryName] = set()
-                                        combinationsSkipped[modelBaseName][categoryName].add(attachmentIdsSet)
-                                    continue
-
-                                # TODO: maybe only do this if self.debug ?
-                                if True:
-                                    if modelBaseName not in combinationsAdded:
-                                        combinationsAdded[modelBaseName] = {}
-                                    if categoryName not in combinationsAdded[modelBaseName]:
-                                        combinationsAdded[modelBaseName][categoryName] = set()
-                                    combinationsAdded[modelBaseName][categoryName].add(attachmentIdsSet)
-                                comboCount += 1
-
-                                attachmentNamesString = self.exportAttachmentsSeparator.join(attachmentIds)
-                                attachmentDisplayNames = [getAttachmentDisplayName(a) for a in combo]
-                                attachmentDisplayNamesString = ', '.join([name for name in attachmentDisplayNames if name])
-                                newModelDisplayName = f'{modelDisplayNameBase}{f" ({attachmentDisplayNamesString})" if attachmentDisplayNamesString else ""}'
-                                if True:
-                                    attachmentNamesHashed = md5Hash(attachmentNamesString).upper()
-                                    newModelId = f'{modelBaseName}_{shortCategoryName}_{attachmentNamesHashed}'
-                                else:
-                                    # TODO: use UUID instead?
-                                    newModelId = f'{modelBaseName}_{shortCategoryName}_{attachmentNamesString}'
-                                # TODO: warn if this ID has already been used
-                                sprint(f"Making combo: {', '.join(attachmentIds)}")
-                                newModel = copy.deepcopy(model)
-                                newModelValues = getPropertyValue(newModel)
-                                newModelIdProp = getModelIdProperty(newModelValues, self.gameVersion)
-                                setPropertyValue(newModelIdProp, newModelId)
-                                setModelName(newModel, newModelId)
-
-                                newUiDataValues = getUiDataValues(newModelValues)
-
-                                newModelDisplayNameProp = getModelDisplayNameProperty(newUiDataValues)
-                                newModelDisplayNameProp[ModelDisplayNamePropNameFieldName] = newModelDisplayName
-
-                                if False:
-                                    newModelDisplayNameProp[ValueFieldName] = generateRandomHexString(32).upper()
-                                elif False:
-                                    # TODO: use same algorithm unreal engine uses - this is not identical, but it seems to do the trick anyway
-                                    newModelDisplayNameProp[ValueFieldName] = sha256Hash(newModelDisplayName.lower()).upper()
-                                else:
-                                    newModelDisplayNameProp[ValueFieldName] = md5Hash(newModelDisplayName.lower()).upper()
-
-                                newSocketAttachmentsStruct = findSocketAttachmentsStruct(newModelValues)
-                                newSocketAttachmentsStruct.pop('DummyStruct', None)
-                                newSocketAttachments = getPropertyValue(newSocketAttachmentsStruct)
-
-                                for attachment in combo:
-                                    # Correct the blueprint property name for different game versions
-                                    attachmentValues = getPropertyValue(attachment['attachmentData'])
-                                    blueprintAttachmentProperty = getAttachmentBlueprintProperty(attachmentValues)
-                                    if self.gameVersion == '6.5.2':
-                                        if blueprintAttachmentProperty[NameFieldName] != AccessoryBlueprintName:
-                                            blueprintAttachmentProperty[NameFieldName] = AccessoryBlueprintName
-                                            if self.debug:
-                                                sprint(f'- Changing attachment blueprint property name field to `{blueprintAttachmentProperty[NameFieldName]}`')
-                                    else:
-                                        if blueprintAttachmentProperty[NameFieldName] != AttachmentBlueprintName:
-                                            blueprintAttachmentProperty[NameFieldName] = AttachmentBlueprintName
-                                            if self.debug:
-                                                sprint(f'- Changing attachment blueprint property name field to `{blueprintAttachmentProperty[NameFieldName]}`')
-
-                                    newSocketAttachments.append(attachment['attachmentData'])
+                                if searchingGameAssets and blueprintPath and self.umodelPath and umodelCwdPathInfo and gamePaksDirPathInfo:
                                     # TODO: remove
                                     if False:
-                                        addAllToNameMap(attachment['attachmentData'], nameMapSet)
+                                        sprint('Reading attachment blueprint...')
+                                    # try to load the attachment blueprint to discover the mesh
+                                    try:
+                                        saveFilePath = self.saveAsset(
+                                            gamePaksDirPathInfo['absolute'],
+                                            umodelCwdPathInfo['absolute'],
+                                            blueprintShortStemPath,
+                                            silent=True,
+                                        )
+                                    except Exception as e:
+                                        self.printError(e)
+                                        saveFilePath = None
 
-                                # TODO: alter model icons and descriptions if specified
+                                    if saveFilePath and checkInput():
+                                        try:
+                                            # TODO: remove
+                                            if False:
+                                                sprint(f'Searching "{saveFilePath}"...')
+                                            saveFileDir = os.path.dirname(saveFilePath)
+                                            saveFileStem = os.path.basename(saveFilePath).removesuffix(UassetFilenameSuffix)
+                                            with tempFileHelpers.openTemporaryFile(
+                                                saveFileDir,
+                                                prefix=f'{saveFileStem}_',
+                                                suffix='.json',
+                                                deleteFirst=True,
+                                            ) as saveFileJsonFile:
+                                                saveFileJsonPath = getPathInfo(saveFileJsonFile.name)['best']
+                                                try:
+                                                    blueprintData = self.readDataFromUasset(
+                                                        saveFilePath,
+                                                        saveFileJsonPath,
+                                                        silent=True,
+                                                    )
+                                                except Exception as e:
+                                                    blueprintData = None
+                                                    self.printError(e)
 
-                                models.append(newModel)
-                                # TODO: remove
-                                if False:
-                                    nameMapSet.add(newModelId)
-                        sprint(f'Created {comboCount} combos')
-                        sprintPad()
-            except Exception as e:
-                self.printError(e)
+                                                if blueprintData:
+                                                    if False:
+                                                        for name in blueprintData[NameMapFieldName]:
+                                                            if not checkInput():
+                                                                break
+                                                            sprint(name)
+                                                    imports = blueprintData.get(ImportsFieldName, [])
+                                                    animBlueprintShortStemPath = getShortenedAssetPath(
+                                                        getAnimBlueprintPath(imports)
+                                                    )
+                                                    sprint(f'  - Animation blueprint: {animBlueprintShortStemPath or "(none)"}')
+                                                    meshShortStemPath = getShortenedAssetPath(
+                                                        getSkeletalMeshPath(imports)
+                                                    )
+                                                    sprint(f'  - Attachment mesh: {meshShortStemPath or "(none)"}')
+                                                    if meshShortStemPath and self.shouldView:
+                                                        fullMeshPath = f'{"" if meshShortStemPath.startswith("/") else AssetPathGamePrefix}{meshShortStemPath}{UassetFilenameSuffix}'
+                                                        viewReturnCode = None
+                                                        viewError = False
+                                                        for viewStreamName, viewLine, viewStop in runUmodelCommand(
+                                                            self.umodelPath,
+                                                            [
+                                                                '-view',
+                                                                f'-game={self.getUmodelGameTag()}',
+                                                                f'-path={gamePaksDirPathInfo["absolute"]}',
+                                                                fullMeshPath,
+                                                                # TODO: remove
+                                                                #ClassNameSkeletalMesh,
+                                                            ],
+                                                            cwd=umodelCwdPathInfo['absolute'],
+                                                            debug=self.debug,
+                                                        ):
+                                                            if not checkInput():
+                                                                viewStop()
+                                                            if viewStreamName == 'return_code':
+                                                                viewReturnCode = viewLine
+                                                            elif viewStreamName == 'stderr' and 'ERROR' in viewLine:
+                                                                self.printError(viewLine)
+                                                                viewError = viewLine
+                                                            elif self.debug:
+                                                                sprint(viewLine)
+                                                        if viewReturnCode or viewError:
+                                                            self.printError(f'Failed to view "{fullMeshPath}"')
 
-        sprintPad()
-        sprint('Models processed.')
-        sprintPad()
+                                                checkInput(inBlueprintJson=True)
+                                        finally:
+                                            for path in getAssetSplitFilePaths(saveFilePath):
+                                                pathlib.Path.unlink(path, missing_ok=True)
 
-        if mixingAttachments and customizationItemDb is not None:
+                                nameIsh = socketName
+                                if not nameIsh and blueprintPath:
+                                    nameIsh = os.path.basename(blueprintPath)
+                                if not nameIsh and skeletalMeshShortStemPath:
+                                    nameIsh = os.path.basename(skeletalMeshShortStemPath)
+                                if not nameIsh and modelDisplayName:
+                                    nameIsh = modelDisplayName.replace(' ', '_')
+                                if not nameIsh and modelName:
+                                    nameIsh = modelName
+
+                                displayNameIsh = modelDisplayName
+                                if not displayNameIsh and modelName:
+                                    displayNameIsh = modelName
+                                if not displayNameIsh and nameIsh:
+                                    displayNameIsh = nameIsh
+
+                                if extractingAttachments:
+                                    if attachmentIndex < len(attachmentNames):
+                                        attachmentId = attachmentNames[attachmentIndex]
+                                    else:
+                                        attachmentId = '_'.join([part for part in [nameIsh, f'{attachmentIndex + 1}'] if part])
+
+                                    if attachmentIndex < len(attachmentDisplayNames):
+                                        attachmentDisplayName = attachmentDisplayNames[attachmentIndex]
+                                    else:
+                                        attachmentDisplayName = ' '.join(
+                                            part for part in [
+                                                displayNameIsh,
+                                                'Attachment' if len(socketAttachments) > 1 else '',
+                                                f'{attachmentIndex + 1}/{len(socketAttachments)}' if len(socketAttachments) > 1 else '',
+                                            ] if part
+                                        )
+
+                                    filename = f'SocketAttachment_{modelBaseName}_{shortCategoryName}_{attachmentId}.yaml'
+                                    filePath = getPathInfo(os.path.join(self.ensureAttachmentsDir(), filename))['best']
+
+                                    if os.path.exists(filePath):
+                                        self.printWarning(f'Skipping attachment {attachmentIndex + 1} (file already exists): "{filePath}"', pad=False)
+                                    else:
+                                        sprint(f'{self.dryRunPrefix}Extracting attachment {attachmentIndex + 1}: {attachmentId} ({attachmentDisplayName}) to "{filePath}"')
+
+                                        attachmentInfo = {
+                                            'attachmentId': attachmentId,
+                                            'modelCategory': categoryName,
+                                            'displayName': attachmentDisplayName,
+                                            'associatedModelId': modelName,
+                                            'associatedCharacterId': associatedCharacterId,
+                                            'associatedCharacterMesh': meshAssetShortStemPath,
+                                            'animationBlueprint': animBlueprintShortStemPath,
+                                            'attachmentMesh': meshShortStemPath,
+                                            'attachmentData': attachmentData,
+                                        }
+
+                                        if not self.dryRun:
+                                            with open(filePath, 'w', encoding='utf-8') as file:
+                                                yamlDump(attachmentInfo, file)
+
+                                        attachmentsCreated.append(filePath)
+                    elif mixingAttachments:
+                        shouldAddThisModel = True
+                        emptySet = frozenset()
+
+                        if shouldAddThisModel:
+                            if emptySet in categoryCombinationsToSkip.get(categoryName, {}):
+                                baseModels = categoryCombinationsToSkip[categoryName][emptySet]
+                                if not baseModels or modelBaseName in baseModels:
+                                    shouldAddThisModel = False
+
+                        if shouldAddThisModel:
+                            if emptySet in categoryCombinationSubsetsToSkip.get(categoryName, {}):
+                                baseModels = categoryCombinationsToSkip[categoryName][emptySet]
+                                if not baseModels or modelBaseName in baseModels:
+                                    shouldAddThisModel = False
+
+                        if shouldAddThisModel:
+                            sprintPad()
+                            sprint(f'Adding base model {categoryName}::{modelBaseName}')
+                            sprintPad()
+                            models.append(model)
+                        else:
+                            sprintPad()
+                            sprint(f'Skipping base model {categoryName}::{modelBaseName}')
+                            sprintPad()
+
+                        if categoryName in attachmentsToMix:
+                            modelDisplayNameBase = modelDisplayName
+                            openParenIndex = modelDisplayName.find('(')
+                            if openParenIndex > -1:
+                                closeParenIndex = modelDisplayName.find(')', openParenIndex + 1)
+                                if closeParenIndex > -1:
+                                    modelDisplayNameBase = modelDisplayName[:openParenIndex].rstrip()
+
+                            comboCount = 0
+
+                            attachmentsForCategory = attachmentsToMix[categoryName]
+                            sprintPad()
+                            sprint(f'Mixing {len(attachmentsForCategory)} attachments into combinations...')
+                            sprintPad()
+                            for r in range(1, len(attachmentsForCategory) + 1):
+                                if not checkInput():
+                                    break
+
+                                # TODO: use names instead of values in combinations()
+                                for combo in combinations(attachmentsForCategory.values(), r):
+                                    if not checkInput():
+                                        break
+
+                                    attachmentIds = [a['attachmentId'] for a in combo]
+
+                                    attachmentIdsSet = frozenset(attachmentIds)
+
+                                    shouldSkipCombo = None
+
+                                    if shouldSkipCombo is None:
+                                        baseModels = categoryCombinationsToSkip.get(categoryName, {}).get(attachmentIdsSet, None)
+                                        if baseModels is not None:
+                                            if len(baseModels) == 0 or modelBaseName in baseModels:
+                                                shouldSkipCombo = True
+
+                                    if shouldSkipCombo is None:
+                                        for combosToSkip, baseModels in categoryCombinationSubsetsToSkip.get(categoryName, {}).items():
+                                            if (len(baseModels) == 0 or modelBaseName in baseModels) and combosToSkip <= attachmentIdsSet:
+                                                shouldSkipCombo = True
+                                                break
+
+                                    if shouldSkipCombo is None:
+                                        for combosRequired, baseModels in categoryCombinationsRequired.get(categoryName, {}).items():
+                                            if len(baseModels) and modelBaseName not in baseModels:
+                                                continue
+
+                                            if combosRequired != attachmentIdsSet:
+                                                shouldSkipCombo = True
+                                                break
+
+                                    if shouldSkipCombo is None:
+                                        for combosRequired, baseModels in categoryCombinationSubsetsRequired.get(categoryName, {}).items():
+                                            if len(baseModels) and modelBaseName not in baseModels:
+                                                continue
+
+                                            if not combosRequired <= attachmentIdsSet:
+                                                shouldSkipCombo = True
+                                                break
+
+                                    if shouldSkipCombo is None:
+                                        # allow all by default
+                                        shouldSkipCombo = False
+
+                                    if shouldSkipCombo:
+                                        if self.debug:
+                                            if modelBaseName not in combinationsSkipped:
+                                                combinationsSkipped[modelBaseName] = {}
+                                            if categoryName not in combinationsSkipped[modelBaseName]:
+                                                combinationsSkipped[modelBaseName][categoryName] = set()
+                                            combinationsSkipped[modelBaseName][categoryName].add(attachmentIdsSet)
+                                        continue
+
+                                    # TODO: maybe only do this if self.debug ?
+                                    if True:
+                                        if modelBaseName not in combinationsAdded:
+                                            combinationsAdded[modelBaseName] = {}
+                                        if categoryName not in combinationsAdded[modelBaseName]:
+                                            combinationsAdded[modelBaseName][categoryName] = set()
+                                        combinationsAdded[modelBaseName][categoryName].add(attachmentIdsSet)
+                                    comboCount += 1
+
+                                    attachmentNamesString = self.exportAttachmentsSeparator.join(attachmentIds)
+                                    attachmentDisplayNames = [getAttachmentDisplayName(a) for a in combo]
+                                    attachmentDisplayNamesString = ', '.join([name for name in attachmentDisplayNames if name])
+                                    newModelDisplayName = f'{modelDisplayNameBase}{f" ({attachmentDisplayNamesString})" if attachmentDisplayNamesString else ""}'
+                                    if True:
+                                        attachmentNamesHashed = md5Hash(attachmentNamesString).upper()
+                                        newModelId = f'{modelBaseName}_{shortCategoryName}_{attachmentNamesHashed}'
+                                    else:
+                                        # TODO: use UUID instead?
+                                        newModelId = f'{modelBaseName}_{shortCategoryName}_{attachmentNamesString}'
+                                    # TODO: warn if this ID has already been used
+                                    sprint(f"Making combo: {', '.join(attachmentIds)}")
+                                    newModel = copy.deepcopy(model)
+                                    newModelValues = getPropertyValue(newModel)
+                                    newModelIdProp = getModelIdProperty(newModelValues, self.gameVersion)
+                                    setPropertyValue(newModelIdProp, newModelId)
+                                    setModelName(newModel, newModelId)
+
+                                    newUiDataValues = getUiDataValues(newModelValues)
+
+                                    newModelDisplayNameProp = getModelDisplayNameProperty(newUiDataValues)
+                                    newModelDisplayNameProp[ModelDisplayNamePropNameFieldName] = newModelDisplayName
+
+                                    if False:
+                                        newModelDisplayNameProp[ValueFieldName] = generateRandomHexString(32).upper()
+                                    elif False:
+                                        # TODO: use same algorithm unreal engine uses - this is not identical, but it seems to do the trick anyway
+                                        newModelDisplayNameProp[ValueFieldName] = sha256Hash(newModelDisplayName.lower()).upper()
+                                    else:
+                                        newModelDisplayNameProp[ValueFieldName] = md5Hash(newModelDisplayName.lower()).upper()
+
+                                    newSocketAttachmentsStruct = findSocketAttachmentsStruct(newModelValues)
+                                    newSocketAttachmentsStruct.pop('DummyStruct', None)
+                                    newSocketAttachments = getPropertyValue(newSocketAttachmentsStruct)
+
+                                    for attachment in combo:
+                                        # Correct the blueprint property name for different game versions
+                                        attachmentValues = getPropertyValue(attachment['attachmentData'])
+                                        blueprintAttachmentProperty = getAttachmentBlueprintProperty(attachmentValues)
+                                        if self.gameVersion == '6.5.2':
+                                            if blueprintAttachmentProperty[NameFieldName] != AccessoryBlueprintName:
+                                                blueprintAttachmentProperty[NameFieldName] = AccessoryBlueprintName
+                                                if self.debug:
+                                                    sprint(f'- Changing attachment blueprint property name field to `{blueprintAttachmentProperty[NameFieldName]}`')
+                                        else:
+                                            if blueprintAttachmentProperty[NameFieldName] != AttachmentBlueprintName:
+                                                blueprintAttachmentProperty[NameFieldName] = AttachmentBlueprintName
+                                                if self.debug:
+                                                    sprint(f'- Changing attachment blueprint property name field to `{blueprintAttachmentProperty[NameFieldName]}`')
+
+                                        newSocketAttachments.append(attachment['attachmentData'])
+
+                                    # TODO: alter model icons and descriptions if specified
+
+                                    models.append(newModel)
+                            sprint(f'Created {comboCount} combos')
+                            sprintPad()
+                except Exception as e:
+                    self.printError(e)
+            sprintPad()
+            sprint('Models processed.')
+            sprintPad()
+
+        if mixingAttachments:
+            nameMapArray = customizationItemDb[NameMapFieldName]
             nameMapArrayCopy = nameMapArray.copy()
             nameMapArray.clear()
-            nameMapSet.clear()
+            nameMapSet = set()
             addAllToNameMap(customizationItemDb.get(ImportsFieldName, []), nameMapSet)
             addAllToNameMap(customizationItemDb.get(ExportsFieldName, []), nameMapSet)
 
@@ -931,6 +941,11 @@ class ModSwapCommandRunner():
             nameMapNamesRemoved = nameMapSetOld - nameMapSet
             nameMapNamesAdded = nameMapSet - nameMapSetOld
 
+            asset['nameMapAlterations'] = {
+                'namesAdded': nameMapNamesAdded,
+                'namesRemoved': nameMapNamesRemoved,
+            },
+
             if self.debug:
                 sprintPad()
                 sprint(f'{NameMapFieldName} names removed:')
@@ -943,13 +958,15 @@ class ModSwapCommandRunner():
                 sprint(yamlDump(jsonifyDataRecursive(nameMapNamesAdded)))
                 sprintPad()
 
+        if upgrading or mixingAttachments:
             if writingAlteredDb:
                 jsonOutPath = getPathInfo(os.path.join(
                     settingsPathInfo['dir'],
+                    # TODO: make path unique if writing multiple CustomizationItemDB assets
                     f"{settingsPathInfo['stem']}_{customizationItemDbPathInfo['stem']}-altered.json",
                 ))['best']
                 sprintPad()
-                sprint(f'{self.dryRunPrefix}Writing altered {CustomizationItemDbAssetName} to "{jsonOutPath}"')
+                sprint(f'{self.dryRunPrefix}Writing altered {CustomizationItemDbAssetName} to "{jsonOutPath}"...')
                 shouldWrite = not self.dryRun
                 written = False
                 if shouldWrite:
@@ -969,7 +986,7 @@ class ModSwapCommandRunner():
                         customizationItemDbPathInfo = getPathInfo(os.path.join(customizationItemDbDestDir, customizationItemDbPathInfo['basename']))
 
                     sprintPad()
-                    sprint(f'{self.dryRunPrefix}Writing altered {CustomizationItemDbAssetName} to "{customizationItemDbPathInfo["best"]}"')
+                    sprint(f'{self.dryRunPrefix}Writing altered {CustomizationItemDbAssetName} to "{customizationItemDbPathInfo["best"]}"...')
                     if os.path.exists(self.uassetGuiPath):
                         shouldWrite = not self.dryRun
                         written = False
@@ -990,19 +1007,24 @@ class ModSwapCommandRunner():
                                     'contentDir': customizationItemDbDestContentDir,
                                     'fileSuffixes': [UassetFilenameSuffix, UexpFilenameSuffix],
                                 }
+                                if self.debug:
+                                    sprintPad()
+                                    sprint(customizationItemDbContentDirRelativePath)
+                                    sprint(assetStemPath)
+                                    sprint(assetStemPathSourceFilesMap[assetStemPath])
 
                         sprintPad()
                     else:
-                        self.printError(f'`uassetGuiPath` ("{self.uassetGuiPath})" does not exist')
+                        self.printError(f'`uassetGuiPath` "{self.uassetGuiPath}" does not exist')
 
-                # TODO: this should be optional
-                if True:
+                if self.debug:
                     yamlOutPath = getPathInfo(os.path.join(
                         settingsPathInfo['dir'],
+                        # TODO: make path unique if writing multiple CustomizationItemDB assets
                         f"{settingsPathInfo['stem']}_{customizationItemDbPathInfo['stem']}-altered.yaml",
                     ))['best']
                     sprintPad()
-                    sprint(f'{self.dryRunPrefix}Writing altered {CustomizationItemDbAssetName} to "{yamlOutPath}"')
+                    sprint(f'{self.dryRunPrefix}Writing altered {CustomizationItemDbAssetName} to "{yamlOutPath}"...')
                     shouldWrite = not self.dryRun
                     written = False
                     if shouldWrite:
@@ -1013,6 +1035,10 @@ class ModSwapCommandRunner():
                     if written or self.dryRun:
                         sprint(f'{self.dryRunPrefix if not written else ""}Done writing.')
                     sprintPad()
+
+        sprintPad()
+        sprint('Done processing.')
+        sprintPad()
 
     def saveAsset(self, paksDir, destDir, assetPath, silent=False, setExitCode=True):
         assetPath = assetPath.removesuffix(UassetFilenameSuffix)
@@ -1061,7 +1087,7 @@ class ModSwapCommandRunner():
             raise ValueError(message)
 
         if not silent:
-            sprint('Asset extracted.')
+            sprint('Done extracting.')
 
         return saveFilePath
 
@@ -1075,6 +1101,7 @@ class ModSwapCommandRunner():
         extractingAttachments = kwargs.get('extractingAttachments', False)
         renamingAttachmentFiles = kwargs.get('renamingAttachmentFiles', False)
         mixingAttachments = kwargs.get('mixingAttachments', False)
+        upgradingMods = kwargs.get('upgradingMods', False)
         paking = kwargs.get('paking', False)
         installingMods = kwargs.get('installingMods', False)
         openingGameLauncher = kwargs.get('openingGameLauncher', False)
@@ -1090,7 +1117,8 @@ class ModSwapCommandRunner():
         fromMenu = kwargs.get('fromMenu', False)
         self.dryRun = kwargs.get('dryRun', False)
         gameDir = kwargs.get('gameDir', None)
-        self.gameVersion = kwargs.get('gameVersion', None)
+        self.gameVersion = (kwargs.get('gameVersion', None) or '').strip()
+        self.prevGameVersion = (kwargs.get('prevGameVersion', None) or '').strip()
         pakingDir = kwargs.get('pakingDir', None)
         self.attachmentsDir = kwargs.get('attachmentsDir', None)
         extraContentDir = kwargs.get('extraContentDir', None)
@@ -1098,6 +1126,8 @@ class ModSwapCommandRunner():
         searchingGameAssets = kwargs.get('searchingGameAssets', False)
         self.searchingSlots = kwargs.get('searchingSlots', None)
         self.unrealEngineVersion = kwargs.get('unrealEngineVersion', None)
+        srcPakPath = (kwargs.get('srcPakPath', None) or '').strip()
+        customizationItemDbPath = (kwargs.get('customizationItemDbPath', None) or '').strip()
 
         # TODO: attachmemt filters: characterID(s), item role(s), attachment type(s)
         # TODO: be able to specify regex and case insensitivity
@@ -1139,7 +1169,7 @@ class ModSwapCommandRunner():
         printingJson = False
         printingYaml = False
 
-        writingUnalteredDb = True
+        writingUnalteredDb = self.debug
 
         settingsFilePathInfo = getPathInfo(settingsFilePath)
 
@@ -1152,8 +1182,7 @@ class ModSwapCommandRunner():
             for filename in findSettingsFiles(settingsDirPathInfo['absolute']):
                 discoveredSettingsFiles.append(filename)
                 sprint(f'{len(discoveredSettingsFiles)} - {filename}')
-            sprint('Done.', end=' ')
-            sprint(f'Discovered {len(discoveredSettingsFiles)} settings files.')
+            sprint('Done scanning. Discovered {len(discoveredSettingsFiles)} settings files')
             sprintPad()
 
         settingsFilePath = settingsFilePathInfo['best']
@@ -1173,9 +1202,11 @@ class ModSwapCommandRunner():
         targetActiveMods = []
         pakingDirPakchunkStems = []
         gameName = ''
-        srcPakPath = ''
+        gameProgramName = ''
         srcPakStem = ''
         srcPakDir = ''
+        srcPakDirAlreadyExisted = None
+        srcPakDirWasWritten = False
         srcPakNumber = -1
         srcPakName = None
         srcPakPlatform = None
@@ -1196,9 +1227,7 @@ class ModSwapCommandRunner():
 
         destPlatform = DefaultPlatform
 
-        customizationItemDbPath = ''
-        customizationItemDb = None
-        customizationItemDbContentDirRelativePath = None
+        customizationItemDbAssets = []
 
         equivalentParts = {}
         supersetParts = {}
@@ -1211,14 +1240,8 @@ class ModSwapCommandRunner():
         categoryCombinationSubsetsToSkip = {}
         categoryCombinationsRequired = {}
         categoryCombinationSubsetsRequired = {}
-        combinationsAdded = {}
-        combinationsSkipped = {}
         attachmentsToMix = {}
-        nameMapNamesRemoved = []
-        nameMapNamesAdded = []
         attachmentsCreated = []
-        nameMapArray = []
-        nameMapSet = set(nameMapArray)
         attachmentsRenamed = {}
 
         def ensurePakingDir():
@@ -1230,10 +1253,11 @@ class ModSwapCommandRunner():
 
         try:
             if not os.path.exists(settingsFilePath):
-                self.printWarning(f'Settings file ("{settingsFilePath}") does not exist. {self.dryRunPrefix}Creating it now with default content.')
+                self.printWarning(f'Settings file "{settingsFilePath}" does not exist. {self.dryRunPrefix}Creating it now with default content...')
                 yamlStringContent = getSettingsTemplate(
                     gameDir=gameDir,
                     gameVersion=self.gameVersion,
+                    prevGameVersion=self.prevGameVersion,
                     pakingDir=pakingDir,
                     attachmentsDir=self.attachmentsDir,
                     extraContentDir=extraContentDir,
@@ -1247,19 +1271,23 @@ class ModSwapCommandRunner():
                 if printingYaml:
                     sprint(yamlStringContent)
                     sprintPad()
-                shouldWrite = not self.dryRun or (not self.nonInteractive and confirm(f'write settings file ("{settingsFilePath}") despite dry run', pad=True, emptyMeansNo=True))
+                shouldWrite = not self.dryRun or (not self.nonInteractive and confirm(f'write settings file "{settingsFilePath}" despite dry run', pad=True, emptyMeansNo=True))
                 written = False
                 if shouldWrite:
                     with open(settingsFilePath, 'w', encoding='utf-8') as file:
                         file.write(yamlStringContent)
                         written = True
                 if written or self.dryRun:
-                    sprint(f'{self.dryRunPrefix if not written else ""}Done writing.')
+                    sprint(f'{self.dryRunPrefix if not written else ""}Done creating.')
                 sprintPad()
 
             settingsPathInfo = getPathInfo(settingsFilePath)
             settingsDir = settingsPathInfo['dir']
             settings = readSettingsRecursive(settingsFilePath)
+
+            srcPakPath = getPathInfo((settings.get('srcPakPath', None) or '').strip() or srcPakPath)['best']
+            if not srcPakPath and inspecting:
+                self.printWarning(f'Missing or empty `srcPakPath`')
 
             unrealPakPath = settings.get('unrealPakPath', unrealPakPath)
             unrealPakPath = unrealPakPath or ''
@@ -1271,6 +1299,7 @@ class ModSwapCommandRunner():
                     or (
                         srcPakPath and (
                             extractingAttachments
+                            or upgradingMods
                             or mixingAttachments
                         )
                     )
@@ -1294,6 +1323,10 @@ class ModSwapCommandRunner():
                 self.printError(f'`sigFilePath` is not a file ("{sigFilePath}")')
                 sigFilePath = ''
 
+            customizationItemDbPath = (settings.get('customizationItemDbPath', None) or '').strip() or customizationItemDbPath
+            if not customizationItemDbPath and inspecting:
+                self.printWarning(f'Missing or empty `customizationItemDbPath`')
+
             self.uassetGuiPath = settings.get('uassetGuiPath', self.uassetGuiPath)
             self.uassetGuiPath = self.uassetGuiPath or ''
             self.uassetGuiPath = getPathInfo(self.uassetGuiPath)['best']
@@ -1304,6 +1337,7 @@ class ModSwapCommandRunner():
                         customizationItemDbPath
                         and (
                             extractingAttachments
+                            or upgradingMods
                             or mixingAttachments
                         )
                     )
@@ -1334,6 +1368,7 @@ class ModSwapCommandRunner():
                 if (
                     inspecting
                     or extractingAttachments
+                    or upgradingMods
                     or mixingAttachments
                     or paking
                     or installingMods
@@ -1370,7 +1405,18 @@ class ModSwapCommandRunner():
             if not gameName and inspecting:
                 self.printWarning('Missing or empty `gameName`')
 
-            self.gameVersion = settings.get('gameVersion', None) or self.gameVersion or None
+            message = 'Missing, empty, or unresolved `gameProgramName`'
+            if not gameProgramName:
+                # TODO: notify if using default program name?
+                gameProgramName = getGameProgramName(settings) or ''
+            gameProgramName = gameProgramName.strip()
+            if not gameProgramName:
+                if killingGame:
+                    self.printError(message)
+                elif inspecting:
+                    self.printWarning(message)
+
+            self.gameVersion = (settings.get('gameVersion', None) or '').strip() or self.gameVersion
             if not self.gameVersion:
                 self.gameVersion = DefaultGameVersion
                 if inspecting:
@@ -1378,6 +1424,18 @@ class ModSwapCommandRunner():
 
             if self.debug:
                 sprint(f'Game version: {self.gameVersion}')
+
+            if self.gameVersion not in KnownSupportedGameVersions:
+                self.printWarning(f'Game version may not be supported')
+
+            self.prevGameVersion = (settings.get('prevGameVersion', None) or '').strip() or self.prevGameVersion
+            if not self.prevGameVersion:
+                self.prevGameVersion = DefaultPrevGameVersion
+                if inspecting:
+                    self.printWarning(f'Missing or empty `prevGameVersion`. Defaulting to {self.prevGameVersion}')
+
+            if self.debug:
+                sprint(f'Previous game version: {self.prevGameVersion}')
 
             self.unrealEngineVersion = (
                 settings.get('unrealEngineVersion', None)
@@ -1401,6 +1459,7 @@ class ModSwapCommandRunner():
                 if (
                     inspecting
                     or extractingAttachments
+                    or upgradingMods
                     or mixingAttachments
                     or paking
                 ):
@@ -1413,6 +1472,7 @@ class ModSwapCommandRunner():
                 if (
                     inspecting
                     or extractingAttachments
+                    or upgradingMods
                     or mixingAttachments
                     or paking
                 ):
@@ -1420,18 +1480,6 @@ class ModSwapCommandRunner():
             elif not os.path.isdir(unrealProjectDir):
                 self.printError(f'`unrealProjectDir` is not a directory ("{unrealProjectDir}")')
                 unrealProjectDir = ''
-
-            if not srcPakPath:
-                srcPakPath = settings.get('srcPakPath', '')
-            srcPakPath = getPathInfo(srcPakPath)['best']
-            if not srcPakPath and inspecting:
-                self.printWarning(f'Missing or empty `srcPakPath`')
-
-            if not customizationItemDbPath:
-                customizationItemDbPath = settings.get('customizationItemDbPath', '')
-            customizationItemDbPath = customizationItemDbPath.strip()
-            if not customizationItemDbPath and inspecting:
-                self.printWarning(f'Missing or empty `customizationItemDbPath`')
 
             if destPakNumber is None:
                 destPakNumber = int(settings.get('destPakNumber', -1))
@@ -1452,10 +1500,10 @@ class ModSwapCommandRunner():
 
             if destPakAssets is None:
                 destPakAssets = settings.get('destPakAssets', None)
+
             if destPakAssets is None:
                 if inspecting:
                     self.printWarning('Missing `destPakAssets`')
-                destPakAssets = []
             elif not destPakAssets:
                 if inspecting or paking:
                     self.printWarning('Empty `destPakAssets`')
@@ -1575,17 +1623,17 @@ class ModSwapCommandRunner():
 
                 if gameDir and gameName:
                     gamePaksDir = getGamePaksDir(gameDir, gameName)
-                    sprint(f'Resolved.')
+                    sprint('Done resolving.')
                     sprintPad()
                     if not os.path.isdir(gamePaksDir):
                         self.printError(f'Game paks folder does not exist ("{gamePaksDir}")')
                         gamePaksDir = ''
 
-            if killingGame:
+            if killingGame and gameProgramName:
                 sprintPad()
                 sprint(f'{self.dryRunPrefix}Killing game...')
                 isRunningAsAdmin = getIsRunningAsAdmin()
-                if getGameIsRunning():
+                if getGameIsRunning(gameProgramName):
                     shouldDoIt = True
                     asAdmin = self.gameVersion == '6.5.2' and not isRunningAsAdmin
                     if asAdmin:
@@ -1598,13 +1646,13 @@ class ModSwapCommandRunner():
                     if shouldDoIt:
                         didIt = False
                         if not self.dryRun:
-                            killExitCode = killGame(asAdmin=asAdmin)
+                            killExitCode = killGame(gameProgramName, asAdmin=asAdmin)
                             if killExitCode:
                                 self.printError(f'killing game returned exit code: {killExitCode}')
                             else:
                                 didIt = True
                         if didIt:
-                            sprint(f'{self.dryRunPrefix}game process terminated.')
+                            sprint(f'{self.dryRunPrefix}Game process terminated.')
                             # TODO: need to wait?
                     else:
                         sprint('Skipping killing game.')
@@ -1612,7 +1660,7 @@ class ModSwapCommandRunner():
                     sprint('Game is not running.')
                 sprintPad()
 
-                if self.gameVersion != '6.5.2':
+                if semver.VersionInfo.parse(self.gameVersion) == semver.VersionInfo.parse('4.4.2'):
                     sprintPad()
                     sprint(f'{self.dryRunPrefix}Killing game lobby...')
                     if getGameLobbyIsRunning():
@@ -1642,7 +1690,7 @@ class ModSwapCommandRunner():
                         sprint('Lobby is not running.')
                     sprintPad()
 
-                if self.gameVersion != '6.5.2':
+                if semver.VersionInfo.parse(self.gameVersion) == semver.VersionInfo.parse('4.4.2'):
                     sprintPad()
                     sprint(f'{self.dryRunPrefix}Killing game server...')
                     if getGameServerIsRunning():
@@ -1680,7 +1728,7 @@ class ModSwapCommandRunner():
                         self.printError(*args, setExitCode=False)
 
                     sprintPad()
-                    sprint('Adding attachment definition...')
+                    sprint('Attachment definition creator')
                     sprintPad()
                     self.ensureAttachmentsDir()
                     while not done:
@@ -1757,8 +1805,8 @@ class ModSwapCommandRunner():
                             if canceled:
                                 return
 
-                            sprint(f'{self.dryRunPrefix}Writing attachment definition to "{filePath}"')
-                            shouldWrite = not self.dryRun or (not self.nonInteractive and confirm(f'write attachment definition ("{filePath}") despite dry run', pad=True, emptyMeansNo=True))
+                            sprint(f'{self.dryRunPrefix}Writing attachment definition to "{filePath}"...')
+                            shouldWrite = not self.dryRun or (not self.nonInteractive and confirm(f'write attachment definition "{filePath}" despite dry run', pad=True, emptyMeansNo=True))
                             written = False
                             if shouldWrite:
                                 if self.readyToWrite(filePath, dryRunHere=False):
@@ -1773,7 +1821,7 @@ class ModSwapCommandRunner():
 
                         attachmentValues = getPropertyValue(attachment['attachmentData'])
                         attachmentBlueprintProperty = getAttachmentBlueprintProperty(attachmentValues)
-                        if self.gameVersion == '6.5.2':
+                        if semver.VersionInfo.parse(self.gameVersion) >= semver.VersionInfo.parse('6.5.2'):
                             attachmentBlueprintProperty[NameFieldName] = AccessoryBlueprintName
                         assetPath = getAssetPathProperty(getPropertyValue(attachmentBlueprintProperty))
                         assetPath[AssetNameFieldName] = ''
@@ -2133,7 +2181,7 @@ class ModSwapCommandRunner():
                         sprint(f'Add canceled.')
                         sprintPad()
 
-            if (inspecting or extractingAttachments or mixingAttachments or paking) and srcPakPath:
+            if (inspecting or extractingAttachments or upgradingMods or mixingAttachments or paking) and srcPakPath:
                 sprintPad()
                 sprint(f'Resolving source pak content folder...')
                 if not gameName:
@@ -2145,27 +2193,29 @@ class ModSwapCommandRunner():
                             self.printWarning(f'Trying `srcPakPath` with "{PakchunkFilenameSuffix}" extension ("{srcPakPath})')
 
                     if not os.path.exists(srcPakPath):
-                        self.printError(f'`srcPakPath` ("{srcPakPath}") does not exist')
+                        self.printError(f'`srcPakPath` "{srcPakPath}" does not exist')
                     elif os.path.isdir(srcPakPath):
                         srcPakDir = srcPakPath
                     elif pathlib.Path(srcPakPath).suffix.lower() == PakchunkFilenameSuffix:
                         srcPakPathInfo = getPathInfo(srcPakPath)
                         srcPakDir = getPathInfo(os.path.join(ensurePakingDir(), srcPakPathInfo['stem']))['best']
+                        srcPakDirAlreadyExisted = os.path.exists(srcPakDir)
                         sprintPad()
-                        sprint(f'{self.dryRunPrefix}Unpaking "{srcPakPath}" to "{srcPakDir}')
+                        sprint(f'{self.dryRunPrefix}Unpaking "{srcPakPath}" to "{srcPakDir}"...')
                         if os.path.exists(unrealPakPath):
                             ensurePakingDir()
-                            shouldWrite = not self.dryRun or (not self.nonInteractive and confirm(f'write to source pak folder ("{srcPakDir}") despite dry run', pad=True, emptyMeansNo=True))
+                            shouldWrite = not self.dryRun or (not self.nonInteractive and confirm(f'write to source pak folder "{srcPakDir}" despite dry run', pad=True, emptyMeansNo=True))
                             written = False
                             if shouldWrite:
                                 if self.readyToWrite(srcPakDir, dryRunHere=False):
-                                    unrealUnpak(srcPakPath, srcPakDir, gameName, unrealPakPath)
+                                    unrealUnpak(srcPakPath, srcPakDir, gameName, unrealPakPath, debug=self.debug)
                                     written = True
                             if written or self.dryRun:
                                 sprint(f'{self.dryRunPrefix if not written else ""}Done unpaking.')
                             sprintPad()
+                            srcPakDirWasWritten = written
                         else:
-                            self.printError(f'`unrealPakPath` ("{unrealPakPath})" does not exist')
+                            self.printError(f'`unrealPakPath` "{unrealPakPath}" does not exist')
 
                     if srcPakDir:
                         srcPakPathInfo = getPathInfo(srcPakDir)
@@ -2181,10 +2231,10 @@ class ModSwapCommandRunner():
                             if not srcPakPlatform:
                                 self.printWarning('Source pakchunk filename has no platform')
                             elif srcPakPlatform != destPlatform:
-                                self.printWarning(f'Source pakchunk platform ("{srcPakPlatform}") is different than "{destPlatform}"')
+                                self.printWarning(f'Source pakchunk platform "{srcPakPlatform}" is different than "{destPlatform}"')
                         srcPakContentDir = getPakContentDir(srcPakDir, gameName)
                         sprintPad()
-                        sprint(f'Reading pak content at "{srcPakContentDir}"')
+                        sprint(f'Reading pak content at "{srcPakContentDir}"...')
                         if os.path.isdir(srcPakContentDir):
                             for pathIndex, path in enumerate(listFilesRecursively(srcPakContentDir)):
                                 srcPakContentPaths.append(path)
@@ -2203,16 +2253,18 @@ class ModSwapCommandRunner():
 
                                 if self.debug:
                                     sprint(f'{pathIndex + 1} - {path}')
-                            sprintPad()
-                            sprint(f'Discovered {len(srcPakContentAssetPathsMap)} pak assets ({len(srcPakContentPaths)} files).')
+                            if self.debug:
+                                sprintPad()
+                            sprint(f'Done reading. Discovered {len(srcPakContentAssetPathsMap)} pak assets ({len(srcPakContentPaths)} files)')
                             sprintPad()
                         else:
-                            self.printError(f'Pak content folder ("{srcPakContentDir}") does not exist')
+                            self.printError(f'Pak content folder "{srcPakContentDir}" does not exist')
                             srcPakContentDir = ''
+                    sprint(f'Done resolving.')
 
-            if (inspecting or extractingAttachments or mixingAttachments or paking) and extraContentDir:
+            if (inspecting or extractingAttachments or upgradingMods or mixingAttachments or paking) and extraContentDir:
                 if srcPakPath and not inspecting:
-                    self.printWarning(f'Not looking for extra cooked content because `srcPakDir` has precedence.')
+                    self.printWarning(f'Not looking for extra cooked content because `srcPakDir` has precedence')
                 else:
                     sprintPad()
                     sprint(f'Reading extra cooked content at "{extraContentDir}"')
@@ -2236,16 +2288,15 @@ class ModSwapCommandRunner():
 
                             if self.debug:
                                 sprint(f'{pathIndex + 1} - {path}')
-                        sprintPad()
-                        sprint(f'Discovered {len(extraContentAssetPathsMap)} extra assets ({len(extraContentPaths)} files).')
+                        sprint(f'Done reading. Discovered {len(extraContentAssetPathsMap)} extra assets ({len(extraContentPaths)} files)')
                         sprintPad()
                     else:
-                        self.printError(f'Extra content folder ("{extraContentDir}") does not exist')
+                        self.printError(f'Extra content folder "{extraContentDir}" does not exist')
                         extraContentDir = ''
 
-            if (inspecting or extractingAttachments or mixingAttachments or paking) and unrealProjectDir:
+            if (inspecting or extractingAttachments or upgradingMods or mixingAttachments or paking) and unrealProjectDir:
                 if srcPakPath and not inspecting:
-                    self.printWarning(f'Not looking for unreal project cooked content because `srcPakDir` has precedence.')
+                    self.printWarning(f'Not looking for unreal project cooked content because `srcPakDir` has precedence')
                 else:
                     sprintPad()
                     sprint(f'Resolving unreal project cooked content folder...')
@@ -2273,62 +2324,93 @@ class ModSwapCommandRunner():
 
                                 if self.debug:
                                     sprint(f'{pathIndex + 1} - {path}')
-                            sprintPad()
-                            sprint(f'Discovered {len(cookedContentAssetPathsMap)} cooked assets ({len(cookedContentPaths)} files).')
+                            sprint(f'Done reading. Discovered {len(cookedContentAssetPathsMap)} cooked assets ({len(cookedContentPaths)} files)')
                             sprintPad()
                         else:
-                            self.printError(f'Cooked content folder ("{cookedContentDir}") does not exist')
+                            self.printError(f'Cooked content folder "{cookedContentDir}" does not exist')
                             cookedContentDir = ''
 
-            if (inspecting and customizationItemDbPath) or extractingAttachments or mixingAttachments:
+            if (inspecting and customizationItemDbPath) or extractingAttachments or upgradingMods or mixingAttachments:
                 sprintPad()
                 sprint(f'Resolving {CustomizationItemDbAssetName} path...')
 
+                customizationItemDbPathUnaltered = customizationItemDbPath
+                customizationItemDbPathIsWildcard = False
+
+                # TODO: fully support standard glob syntax
+                wildcardSuffix = '**/CustomizationItemDB'
+                if customizationItemDbPath.endswith(wildcardSuffix):
+                    customizationItemDbPathIsWildcard = True
+
                 customizationItemDbPath = getPathInfo(customizationItemDbPath)['normalized']
                 if not customizationItemDbPath:
-                    if extractingAttachments or mixingAttachments:
+                    if extractingAttachments or upgradingMods or mixingAttachments:
                         self.printError('Missing or invalid `customizationItemDbPath`')
                 else:
                     customizationItemDbContentDirRelativePath = getContentDirRelativePath(customizationItemDbPath)
                     if customizationItemDbContentDirRelativePath is None:
-                        sprint(f'Resolved path: "{customizationItemDbPath}"')
+                        if customizationItemDbPathIsWildcard:
+                            self.printError(f'Wildcard `customizationItemDbPath` must be a content folder relative path')
+                        else:
+                            sprint(f'Done resolving. Resolved path: "{customizationItemDbPath}"')
+                            customizationItemDbAssets.append({
+                                'path': customizationItemDbPath,
+                            })
                     else:
-                        sprint(f'Content folder relative path detected: "{customizationItemDbPath}"')
+                        sprintPad()
+                        sprint(f'Content folder relative path detected: "{customizationItemDbPathUnaltered}"')
+                        sprintPad()
 
                         if not getPathInfo(customizationItemDbContentDirRelativePath)['suffixLower']:
                             customizationItemDbContentDirRelativePath = f'{customizationItemDbContentDirRelativePath}{UassetFilenameSuffix}'
                             sprint(f'Adding "{UassetFilenameSuffix}" suffix: "{customizationItemDbContentDirRelativePath}"')
-
-                        customizationItemDbPathUnaltered = customizationItemDbPath
-                        customizationItemDbPath = ''
+                            sprintPad()
 
                         allowTryingAsNormalPath = False
 
-                        if not customizationItemDbPath and srcPakPath:
+                        if not customizationItemDbAssets and srcPakPath:
                             if srcPakContentDir:
                                 customizationItemDbPath = getPathInfo(os.path.join(srcPakContentDir, customizationItemDbContentDirRelativePath))['best']
-                                if not os.path.exists(customizationItemDbPath):
-                                    self.printWarning(f'Content dir relative path ("{customizationItemDbPath}") does not exist')
-                                    customizationItemDbPath = ''
+                                if customizationItemDbPathIsWildcard:
+                                    matchingFiles = [getPathInfo(p)['normalized'] for p in glob.glob(customizationItemDbPath, recursive=True)]
+                                    sprintPad()
+                                    sprint(f'CustomizationItemDB wildcard matches ({len(matchingFiles)}):')
+                                    for i, filePath in enumerate(matchingFiles):
+                                        sprint(f'{i + 1} - {filePath}')
+                                    sprintPad()
+                                    if matchingFiles:
+                                        for matchingFile in matchingFiles:
+                                            customizationItemDbAssets.append({
+                                                'path': matchingFile,
+                                                'contentDirRelativePath': getPathInfo(
+                                                    getPathInfo(matchingFile)['absolute'],
+                                                    relativeDir=srcPakContentDir,
+                                                )['relative'],
+                                            })
+                                    else:
+                                        self.printWarning('No CustomizationItemDB wildcard matches')
+                                elif not os.path.exists(customizationItemDbPath):
+                                    self.printWarning(f'Content dir relative path "{customizationItemDbPath}" does not exist')
                             else:
                                 message = 'Content folder relative path cannot be resolved because `srcPakPath` is missing content'
                                 if allowTryingAsNormalPath:
                                     self.printWarning(message)
                                 else:
                                     self.printError(message)
+                        elif customizationItemDbPathIsWildcard:
+                            # TODO: support other kind of sources, and especially if source asset is in destPakAssets
+                            self.printError('CustomizationItemDB wildcard currently only supported for `srcPakPath` source assets')
                         else:
-                            if not customizationItemDbPath and extraContentDir:
+                            if not customizationItemDbAssets and extraContentDir:
                                 customizationItemDbPath = getPathInfo(os.path.join(extraContentDir, customizationItemDbContentDirRelativePath))['best']
                                 if not os.path.exists(customizationItemDbPath):
-                                    self.printWarning(f'Extra content dir relative path ("{customizationItemDbPath}") does not exist')
-                                    customizationItemDbPath = ''
+                                    self.printWarning(f'Extra content dir relative path "{customizationItemDbPath}" does not exist')
 
-                            if not customizationItemDbPath and unrealProjectDir:
+                            if not customizationItemDbAssets and unrealProjectDir:
                                 if cookedContentDir:
                                     customizationItemDbPath = getPathInfo(os.path.join(cookedContentDir, customizationItemDbContentDirRelativePath))['best']
                                     if not os.path.exists(customizationItemDbPath):
-                                        self.printWarning(f'Content dir relative path ("{customizationItemDbPath}") does not exist')
-                                        customizationItemDbPath = ''
+                                        self.printWarning(f'Content dir relative path "{customizationItemDbPath}" does not exist')
                                 else:
                                     message = 'Content folder relative path cannot be resolved because `unrealProjectDir` is missing content'
                                     if allowTryingAsNormalPath:
@@ -2336,19 +2418,27 @@ class ModSwapCommandRunner():
                                     else:
                                         self.printError(message)
 
-                        if customizationItemDbPath:
-                            sprint(f'Resolved to "{customizationItemDbPath}".')
+                        if len(customizationItemDbAssets):
+                            sprint(f'Done resolving. Resolved paths ({len(customizationItemDbAssets)}):')
+                            for i, asset in enumerate(customizationItemDbAssets):
+                                sprint(f'{i + 1} - {asset["path"]}')
+                            sprintPad()
                         elif allowTryingAsNormalPath:
-                            customizationItemDbPath = customizationItemDbPathUnaltered
                             self.printWarning(f'Trying `customizationItemDbPath` as normal file path "{customizationItemDbPath}"')
+                            customizationItemDbAssets.append({
+                                'path': customizationItemDbPathUnaltered,
+                            })
 
-            if customizationItemDbPath:
+            assetsCopy = customizationItemDbAssets.copy()
+            customizationItemDbAssets = []
+            for asset in assetsCopy:
+                customizationItemDbPath = asset['path']
                 customizationItemDbPathInfo = getPathInfo(customizationItemDbPath)
                 customizationItemDbSupportedFileTypes = ['.json', UassetFilenameSuffix]
                 if customizationItemDbPathInfo['suffixLower'] not in customizationItemDbSupportedFileTypes:
                     self.printError(f'Unsupported file extension for {customizationItemDbPath}: must be one of ({", ".join(customizationItemDbSupportedFileTypes)})')
                 elif not os.path.isfile(customizationItemDbPath):
-                    self.printWarning(f'`customizationItemDbPath` ("{customizationItemDbPath}") does not exist')
+                    self.printWarning(f'`customizationItemDbPath` "{customizationItemDbPath}" does not exist')
                 elif customizationItemDbPathInfo['suffixLower'] == '.json':
                     customizationItemDb = self.readUassetDataFromJson(customizationItemDbPath)
                 elif customizationItemDbPathInfo['suffixLower'] == UassetFilenameSuffix:
@@ -2396,10 +2486,11 @@ class ModSwapCommandRunner():
                     if writingUnalteredDb:
                         outPath = getPathInfo(os.path.join(
                             settingsDir,
+                            # TODO: make path unique if writing multiple CustomizationItemDB assets
                             f"{settingsPathInfo['stem']}_{customizationItemDbPathInfo['stem']}-unaltered.yaml",
                         ))['best']
                         sprintPad()
-                        sprint(f'{self.dryRunPrefix}Writing unaltered {CustomizationItemDbAssetName} to "{outPath}"')
+                        sprint(f'{self.dryRunPrefix}Writing unaltered {CustomizationItemDbAssetName} to "{outPath}"...')
                         shouldWrite = not self.dryRun
                         written = False
                         if shouldWrite:
@@ -2411,19 +2502,24 @@ class ModSwapCommandRunner():
                             sprint(f'{self.dryRunPrefix if not written else ""}Done writing.')
                         sprintPad()
 
+                    customizationItemDbAssets.append(asset)
+                    asset['pathInfo'] = customizationItemDbPathInfo
+                    # TODO: optmize memory usage by not storing each table data in this list - read each one on the fly when needed for processing
+                    asset['data'] = customizationItemDb
+
             if inspecting or mixingAttachments or renamingAttachmentFiles:
                 sprintPad()
                 sprint(f'Reading attachments...')
                 attachmentFilenames = os.listdir(self.attachmentsDir) if os.path.isdir(self.attachmentsDir) else []
+                sprint(f'Done reading. Discovered {len(attachmentFilenames)} attachment files')
                 sprintPad()
-                sprint(f'Discovered {len(attachmentFilenames)} attachment files')
                 if len(attachmentFilenames):
                     for filenameIndex, filename in enumerate(attachmentFilenames):
                         filePath = getPathInfo(os.path.join(self.ensureAttachmentsDir(), filename))['best']
                         try:
                             if filename.endswith('.yaml') or filename.endswith('.json'):
                                 with oneLinePrinter() as printOneLine:
-                                    printOneLine(f'{filenameIndex + 1} - reading {filename}...')
+                                    printOneLine(f'{filenameIndex + 1} - Reading {filename}...')
                                     with open(filePath, 'r', encoding='utf-8') as file:
                                         if filename.endswith('.yaml'):
                                             attachmentData = yaml.safe_load(file)
@@ -2433,7 +2529,7 @@ class ModSwapCommandRunner():
                                             raise ValueError(f'Invalid file type: {filename}')
 
                                     attachmentName = attachmentData['attachmentId']
-                                    printOneLine(f'loaded {attachmentName}.')
+                                    printOneLine(f'Loaded {attachmentName}.')
 
                                 if printingJson:
                                     sprintPad()
@@ -2457,9 +2553,9 @@ class ModSwapCommandRunner():
                                 if renamingAttachmentFiles:
                                     newFilename = getAttachmentFilename(attachmentName)
                                     if newFilename == filename:
-                                        sprint(f'rename not needed (already named correctly).')
+                                        sprint(f'Rename not needed (already named correctly)')
                                     else:
-                                        sprint(f'{self.dryRunPrefix}Renaming {filename} to {newFilename}')
+                                        sprint(f'{self.dryRunPrefix}Renaming "{filename}" to "{newFilename}"...')
                                         newFilePath = getPathInfo(os.path.join(self.ensureAttachmentsDir(), newFilename))['best']
                                         if os.path.exists(newFilePath):
                                             raise ValueError(f'Could not rename {filename} to {newFilename} (file already exists)')
@@ -2467,6 +2563,7 @@ class ModSwapCommandRunner():
                                         if not self.dryRun:
                                             os.rename(filePath, newFilePath)
                                         attachmentsRenamed[filename] = newFilename
+                                        sprint('Done renaming.')
                         except Exception as e:
                             self.printError(e)
                     sprint('Done loading attachments.')
@@ -2476,9 +2573,6 @@ class ModSwapCommandRunner():
                     sprintPad()
                     sprint('Generating exclusion rules...')
                     sprintPad()
-                    if customizationItemDb is not None:
-                        nameMapArray = customizationItemDb[NameMapFieldName]
-                        nameMapSet = set(nameMapArray)
 
                     setEqualitySymbol = '=='
                     modelRestrictSymbol = ':'
@@ -2760,30 +2854,27 @@ class ModSwapCommandRunner():
                         sprint(f'{yamlDump(jsonifyDataRecursive(categoryCombinationsRequired))}')
                         sprintPad()
 
-            if (inspecting or extractingAttachments or mixingAttachments) and customizationItemDb is not None:
+            if (inspecting or extractingAttachments or upgradingMods or mixingAttachments) and customizationItemDbAssets:
                 checkInput = self.startKeyboardListener()
                 try:
-                    self.processCustomizationItemDb(
-                        customizationItemDb,
-                        mixingAttachments,
-                        extractingAttachments,
-                        attachmentsCreated,
-                        attachmentsToMix,
-                        categoryCombinationsToSkip,
-                        categoryCombinationSubsetsToSkip,
-                        categoryCombinationsRequired,
-                        categoryCombinationSubsetsRequired,
-                        combinationsSkipped,
-                        combinationsAdded,
-                        nameMapArray,
-                        nameMapSet,
-                        settingsPathInfo,
-                        customizationItemDbPathInfo,
-                        customizationItemDbContentDirRelativePath,
-                        assetStemPathSourceFilesMap,
-                        writingAlteredDb=True,
-                        checkInput=checkInput,
-                    )
+                    for asset in customizationItemDbAssets:
+                        self.processCustomizationItemDb(
+                            asset,
+                            inspecting,
+                            upgradingMods,
+                            mixingAttachments,
+                            extractingAttachments,
+                            attachmentsCreated,
+                            attachmentsToMix,
+                            categoryCombinationsToSkip,
+                            categoryCombinationSubsetsToSkip,
+                            categoryCombinationsRequired,
+                            categoryCombinationSubsetsRequired,
+                            settingsPathInfo,
+                            assetStemPathSourceFilesMap,
+                            writingAlteredDb=True,
+                            checkInput=checkInput,
+                        )
                 finally:
                     self.stopKeyboardListener()
 
@@ -2827,6 +2918,14 @@ class ModSwapCommandRunner():
                         destPakFilename = f'{destPakStem}{PakchunkFilenameSuffix}'
                         destPakPath = getPathInfo(os.path.join(ensurePakingDir(), destPakFilename))['best']
 
+                    if destPakAssets is None:
+                        if srcPakPath:
+                            sprintPad()
+                            destPakAssets = [getPathInfo(p)['normalized'] for p in srcPakContentAssetPathsMap.keys()]
+                            self.printWarning('Setting `destPakAssets` from `srcPakPath`')
+                        else:
+                            destPakAssets = []
+
                     if not destPakAssets:
                         self.printWarning(f'Zero assets configured for paking (empty `destPakAssets`)')
 
@@ -2834,7 +2933,7 @@ class ModSwapCommandRunner():
 
                     # TODO: remove this - because a pak could potentially have zero files in it
                     if not assetStemPathSourceFilesMap and False:
-                        message = f'Missing source content folder for paking'
+                        message = 'Missing source content folder for paking'
                         if paking:
                             self.printError(message)
                             shouldSearchForSrcAssets = False
@@ -2843,7 +2942,7 @@ class ModSwapCommandRunner():
 
                     if shouldSearchForSrcAssets:
                         sprintPad()
-                        sprint(f'Searching source content folders for {len(destPakAssets)} assets to pak')
+                        sprint(f'Searching source content folders for {len(destPakAssets)} assets to pak...')
 
                         srcAssetCount = 0
                         srcFileCount = 0
@@ -2874,8 +2973,7 @@ class ModSwapCommandRunner():
                                     sourceDirDestAssetsMap[sourceFilesInfo['contentDir']] = []
                                 sourceDirDestAssetsMap[sourceFilesInfo['contentDir']].append(asset)
 
-                        sprintPad()
-                        sprint(f'Found {srcAssetCount} assets ({srcFileCount} files).')
+                        sprint(f'Done searching. Found {srcAssetCount} assets ({srcFileCount} files).')
                         sprintPad()
 
                         if paking and not missingAssets:
@@ -2884,7 +2982,7 @@ class ModSwapCommandRunner():
                             else:
                                 assert destPakDir
                                 sprintPad()
-                                sprint(f'{self.dryRunPrefix}Copying {srcFileCount} files from source content folders to "{destPakContentDir}"')
+                                sprint(f'{self.dryRunPrefix}Copying {srcFileCount} files from source content folders to "{destPakContentDir}"...')
                                 ensurePakingDir()
                                 sameDir = srcPakDir == destPakDir
                                 if sameDir:
@@ -2898,9 +2996,9 @@ class ModSwapCommandRunner():
                                             if UassetFilenameSuffix in fileSuffixes:
                                                 fileSuffixes = [UassetFilenameSuffix] + [s for s in fileSuffixes if s != UassetFilenameSuffix]
 
-                                            assetSourceContentDir = srcContentDir
-                                            if assetSourceContentDir is None:
-                                                assetSourceContentDir = assetStemPathSourceFilesMap[assetPath]['contentDir']
+                                            assetSourceContentDir = assetStemPathSourceFilesMap[assetPath]['contentDir']
+                                            if assetSourceContentDir == destPakContentDir:
+                                                assetSourceContentDir = srcContentDir
 
                                             for extension in fileSuffixes:
                                                 relFilePath = f'{assetPath}{extension}'
@@ -2921,9 +3019,10 @@ class ModSwapCommandRunner():
                                                 destPathFileInfo = getPathInfo(os.path.join(destPakContentDir, relFilePath))
                                                 self.ensureDir(destPathFileInfo['dir'], warnIfNotExist=False)
                                                 destPath = destPathFileInfo['best']
-                                                sprintPad()
-                                                sprint(f'{self.dryRunPrefix}Copying file "{srcPath}" to "{destPath}"')
-                                                sprintPad()
+                                                if self.debug:
+                                                    sprintPad()
+                                                    sprint(f'{self.dryRunPrefix}Copying file "{srcPath}" to "{destPath}"')
+                                                    sprintPad()
                                                 if not self.dryRun:
                                                     shutil.copy(srcPath, destPath)
                                     if sameDir:
@@ -2931,7 +3030,7 @@ class ModSwapCommandRunner():
                                             dir=pakingDir,
                                             prefix=f'{destPakStem}_',
                                         ) as tempDir:
-                                            self.printWarning(f'{self.dryRunPrefix}Temporarily moving "{srcPakDir}" to temporary source pak folder ("{tempDir}") for file copying')
+                                            self.printWarning(f'{self.dryRunPrefix}Temporarily moving "{srcPakDir}" to temporary source pak folder "{tempDir}" for file copying')
                                             if not self.dryRun:
                                                 os.rmdir(tempDir)
                                                 shutil.move(srcPakDir, tempDir)
@@ -2950,7 +3049,7 @@ class ModSwapCommandRunner():
 
                                     assert destPakPath
                                     sprintPad()
-                                    sprint(f'{self.dryRunPrefix}Paking "{destPakDir}" into "{destPakPath}"')
+                                    sprint(f'{self.dryRunPrefix}Paking "{destPakDir}" into "{destPakPath}"...')
                                     if os.path.exists(unrealPakPath):
                                         # TODO: check readyToWrite()?
                                         if not self.dryRun:
@@ -2958,15 +3057,32 @@ class ModSwapCommandRunner():
                                             if sigFilePath:
                                                 # TODO: check readyToWrite()?
                                                 destSigPath = pakchunkToSigFilePath(destPakPath)
-                                                sprint(f'Copying "{sigFilePath}" to "{destSigPath}"')
+                                                if self.debug:
+                                                    sprint(f'Copying "{sigFilePath}" to "{destSigPath}"')
                                                 shutil.copy(sigFilePath, pakchunkToSigFilePath(destPakPath))
                                         else:
                                             # simulate creating the pakchunk file
                                             pakingDirPakchunkStems.append(destPakStem)
                                         sprint(f'{self.dryRunPrefix}Done paking.')
                                     else:
-                                        self.printError(f'`unrealPakPath` ("{unrealPakPath})" does not exist')
+                                        self.printError(f'`unrealPakPath` "{unrealPakPath}" does not exist')
                                     sprintPad()
+                                sprint(f'{self.dryRunPrefix}Done copying.')
+                                sprintPad()
+                sprint('Done analyzing.')
+
+            if srcPakDir and srcPakDirWasWritten and not self.debug:
+                sprintPad()
+                sprint(f'{self.dryRunPrefix}Removing "{srcPakDir}" which was extracted from pakchunk "{srcPakPath}"...')
+                shouldWrite = not self.dryRun or (not self.nonInteractive and confirm(f'Remove "{srcPakDir}" despite dry run', pad=True, emptyMeansNo=True))
+                written = False
+                if shouldWrite:
+                    shutil.rmtree(srcPakDir)
+                    written = True
+                if written or self.dryRun:
+                    sprint(f'{self.dryRunPrefix if not written else ""}Done removing.')
+                sprintPad()
+
             if (installingMods and not self.exitCode) or searchingGameAssets or inspecting:
                 sprintPad()
                 sprint(f'Analyzing mod configuration...')
@@ -3005,9 +3121,8 @@ class ModSwapCommandRunner():
                                     sprint(f'{len(allGamePakchunks if loggingReserved else gamePakchunks)} - {relPath}{" -- RESERVED" if reserved else ""}')
                         else:
                             self.printWarning(f'Non-pakchunk file discovered in Paks folder: "{relPath}"')
-                    sprint('Done.')
+                    sprint(f'Done scanning. Discovered {len(allGamePakchunks)} pakchunks ({len(allGamePakchunks) - len(gamePakchunks)} reserved, {len(gamePakchunks)} swappable)')
                     sprintPad()
-                    sprint(f'Discovered {len(allGamePakchunks)} pakchunks ({len(allGamePakchunks) - len(gamePakchunks)} reserved, {len(gamePakchunks)} swappable)')
 
                 allPakingDirPakchunks = []
                 sprintPad()
@@ -3021,8 +3136,9 @@ class ModSwapCommandRunner():
                         if stem not in pakingDirPakchunkStems:
                             pakingDirPakchunkStems.append(stem)
                             sprint(f'{len(pakingDirPakchunkStems)} - {stem}')
-                sprint(f'Discovered {len(pakingDirPakchunkStems)} pakchunks.')
+                sprint(f'Done scanning. Discovered {len(pakingDirPakchunkStems)} pakchunks')
                 sprintPad()
+                sprint('Done analyzing.')
 
                 if searchingGameAssets:
                     sprint('Searching game assets...')
@@ -3317,11 +3433,11 @@ class ModSwapCommandRunner():
                                                                             suffix='.json',
                                                                             deleteFirst=True,
                                                                         ) as saveFileJsonFile:
-                                                                            saveFileJsonPath = getPathInfo(saveFileJsonFile.name)['best']
+                                                                            saveFileJsonPathInfo = getPathInfo(saveFileJsonFile.name)
                                                                             try:
                                                                                 assetData = self.readDataFromUasset(
                                                                                     saveFilePath,
-                                                                                    saveFileJsonPath,
+                                                                                    saveFileJsonPathInfo['best'],
                                                                                     silent=True,
                                                                                 )
                                                                             except Exception as e:
@@ -3387,7 +3503,10 @@ class ModSwapCommandRunner():
 
                                                                                 if self.searchingSlots and packagePath.endswith(f'{CustomizationItemDbAssetName}{UassetFilenameSuffix}'):
                                                                                     self.processCustomizationItemDb(
-                                                                                        assetData,
+                                                                                        {
+                                                                                            'data': assetData,
+                                                                                            'pathInfo': saveFileJsonPathInfo,
+                                                                                        },
                                                                                         searchingGameAssets=True,
                                                                                         extractingAttachments=extractingAttachments,
                                                                                         umodelCwdPathInfo=tempDirPathInfo,
@@ -3402,12 +3521,13 @@ class ModSwapCommandRunner():
                                     # TODO: remove
                                     if False:
                                         pakchunkDir = normPath(os.path.join(tempDir, pakchunkStem))
-                                        sprint(f'Unpaking "{pakchunkPath}" to temporary folder "{pakchunkDir}"')
+                                        sprint(f'Unpaking "{pakchunkPath}" to temporary folder "{pakchunkDir}"...')
                                         try:
-                                            unrealUnpak(pakchunkPath, pakchunkDir, gameName, unrealPakPath)
+                                            unrealUnpak(pakchunkPath, pakchunkDir, gameName, unrealPakPath, debug=self.debug)
                                         except Exception as e:
                                             self.printError(e)
                                             continue
+                                        sprint('Done unpaking.')
 
                                         sprint(f'Searching {pakchunkStem} assets...')
                                         for assetIndex, assetRelPath in enumerate(listFilesRecursively(pakchunkDir)):
@@ -3442,7 +3562,7 @@ class ModSwapCommandRunner():
                                             sprint(f'{len(targetActiveMods)} - {modConfigPath}')
                         sprintPad()
 
-                    sprint(f'Target active mods: {len(targetActiveMods)}.')
+                    sprint(f'Target active mods: {len(targetActiveMods)}')
                     sprintPad()
 
                     sprintPad()
@@ -3476,7 +3596,7 @@ class ModSwapCommandRunner():
 
                         pakchunksToActivate = [p for p in targetActiveMods if p not in gamePakchunks]
                         sprintPad()
-                        sprint(f'Pakchunks to activate: {len(pakchunksToActivate)}')
+                        sprint(f'New pakchunks to activate: {len(pakchunksToActivate)}')
                         for i, pakchunkRelStemPath in enumerate(pakchunksToActivate):
                             sprint(f'{i + 1} - {pakchunkRelStemPath}')
 
@@ -3490,7 +3610,7 @@ class ModSwapCommandRunner():
                             madeChanges = False
 
                             sprintPad()
-                            sprint(f'{self.dryRunPrefix}Moving mods between "{pakingDir}" and "{gamePaksDir}"...')
+                            sprint(f'{self.dryRunPrefix}Ensuring {len(targetActiveMods)} mod(s) active...')
                             for pakchunkRelStemPath in targetActiveMods:
                                 source = f'{pakchunkSourceMap[pakchunkRelStemPath]}{PakchunkFilenameSuffix}'
                                 pakchunkRelPath = f'{pakchunkRelStemPath}{PakchunkFilenameSuffix}'
@@ -3498,7 +3618,8 @@ class ModSwapCommandRunner():
                                 if not self.dryRun and not os.path.exists(source):
                                     self.printError(f'Mod to be active source file not found "{source}"')
                                 elif source != dest and (not os.path.exists(dest) or self.dryRun or not os.path.samefile(source, dest)):
-                                    sprint(f'{self.dryRunPrefix}Moving "{source}" to "[Paks]/{pakchunkRelPath}"')
+                                    sprintPad()
+                                    sprint(f'{self.dryRunPrefix}Moving "{source}" to "[Paks]/{pakchunkRelPath}"...')
                                     if self.readyToWrite(dest):
                                         if not self.dryRun:
                                             shutil.move(source, dest)
@@ -3508,9 +3629,15 @@ class ModSwapCommandRunner():
                                                 # TODO: report that the sig is being copied
                                                 shutil.move(sourceSig, pakchunkToSigFilePath(dest))
                                         madeChanges = True
+                                        sprint(f'{self.dryRunPrefix}Done moving.')
+                                        sprintPad()
                                     else:
                                         self.printWarning(f'Not allowed to overwrite "{pakchunkRelPath}"')
+                            sprint(f'{self.dryRunPrefix}Done activating.')
+                            sprintPad()
 
+                            sprintPad()
+                            sprint(f'{self.dryRunPrefix}Deactivating {len(pakchunksToDeactivate)} mod(s)...')
                             for pakchunkRelStemPath in pakchunksToDeactivate:
                                 pakchunkStem = os.path.basename(pakchunkRelStemPath)
                                 pakchunkFilename = f'{pakchunkStem}{PakchunkFilenameSuffix}'
@@ -3518,7 +3645,8 @@ class ModSwapCommandRunner():
                                 source = normPath(os.path.join(gamePaksDir, pakchunkRelPath))
                                 dest = normPath(os.path.join(pakingDir, pakchunkFilename))
                                 if pakchunkStem in pakingDirPakchunkStems:
-                                    sprint(f'{self.dryRunPrefix}Removing "[Paks]/{pakchunkRelPath}" which is also stored at "{dest}"')
+                                    sprintPad()
+                                    sprint(f'{self.dryRunPrefix}Removing "[Paks]/{pakchunkRelPath}" which is also stored at "{dest}"...')
                                     if self.readyToWrite(source):
                                         if not self.dryRun:
                                             # TODO: remove this because readyToWrite() should have already deleted it
@@ -3529,8 +3657,11 @@ class ModSwapCommandRunner():
                                                 # TODO: report that the sig is being deleted
                                                 pathlib.Path.unlink(sourceSig)
                                         madeChanges = True
+                                        sprint(f'{self.dryRunPrefix}Done removing.')
+                                        sprintPad()
                                 else:
-                                    sprint(f'{self.dryRunPrefix}Moving "{pakchunkRelPath}" to "{dest}"')
+                                    sprintPad()
+                                    sprint(f'{self.dryRunPrefix}Moving "{pakchunkRelPath}" to "{dest}"...')
                                     if not self.dryRun:
                                         shutil.move(source, dest)
                                         sourceSig = pakchunkToSigFilePath(source)
@@ -3539,8 +3670,11 @@ class ModSwapCommandRunner():
                                             # TODO: report that the sig is being copied
                                             shutil.move(sourceSig, pakchunkToSigFilePath(dest))
                                     madeChanges = True
+                                    sprint(f'{self.dryRunPrefix}Done moving.')
+                            sprint(f'{self.dryRunPrefix}Done deactivating.')
+                            sprintPad()
 
-                            sprint(f'{self.dryRunPrefix}Installation succeeded{"" if madeChanges else " - no changes made"}.')
+                            sprint(f'{self.dryRunPrefix}Installation successful{"" if madeChanges else " - no changes made"}.')
                             sprintPad()
         except Exception as e:
             self.printError(e)
@@ -3559,10 +3693,20 @@ class ModSwapCommandRunner():
             or extractingAttachments
             or renamingAttachmentFiles
             or creatingAttachments
+            or upgradingMods
             or mixingAttachments
             or paking
             or installingMods
         ):
+            def customizationItemDbAssetForOutput(asset):
+                result = asset.copy()
+                result.pop('data', None)
+                result.pop('pathInfo', None)
+                if not self.debug:
+                    result.pop('nameMapAlterations', None)
+                    result.pop('combinationsAdded', None)
+                return result
+
             outputInfo = {
                 'warnings': self.warnings,
                 'errors': self.errors,
@@ -3581,12 +3725,7 @@ class ModSwapCommandRunner():
                 'attachmentsRead': {category: list(attachmentDataMap.keys()) for category, attachmentDataMap in attachmentsToMix.items()},
                 'attachmentsRenamed': attachmentsRenamed,
                 'attachmentsCreated': attachmentsCreated,
-                'combosAdded': combinationsAdded,
-                'combosSkipped': combinationsSkipped if self.debug else None,
-                'nameMapAlterations': {
-                    'namesRemoved': nameMapNamesRemoved,
-                    'namesAdded': nameMapNamesAdded,
-                },
+                'customizationItemDbAssets': [customizationItemDbAssetForOutput(asset) for asset in customizationItemDbAssets],
                 'pakingDirPakchunks': pakingDirPakchunkStems,
                 'gamePaksDir': gamePaksDir,
                 'gamePakchunks': gamePakchunks,
@@ -3603,7 +3742,7 @@ class ModSwapCommandRunner():
             outputInfoFilename = getResultsFilePath(settingsFilePath)
             sprintPad()
             sprint(f'{self.dryRunPrefix}Writing command results to "{outputInfoFilename}"')
-            shouldWrite = not self.dryRun or (not self.nonInteractive and confirm(f'write command results ("{outputInfoFilename}") despite dry run', pad=True, emptyMeansNo=True))
+            shouldWrite = not self.dryRun or (not self.nonInteractive and confirm(f'write command results "{outputInfoFilename}" despite dry run', pad=True, emptyMeansNo=True))
             written = False
             if shouldWrite:
                 # TODO: should we not overwrite result file without confirmation?
@@ -3632,6 +3771,7 @@ class ModSwapCommandRunner():
                         or extractingAttachments
                         or renamingAttachmentFiles
                         or creatingAttachments
+                        or upgradingMods
                         or mixingAttachments
                         or paking
                         or installingMods

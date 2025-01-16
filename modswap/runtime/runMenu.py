@@ -1,3 +1,4 @@
+import glob
 import os
 import platform
 
@@ -20,6 +21,7 @@ from modswap.helpers.settingsHelpers import (DefaultAttachmentsDir,
                                              DefaultSettingsPath,
                                              findSettingsFiles,
                                              getEnabledDisabledStr,
+                                             getGameProgramName,
                                              getResultsFilePath,
                                              isValidSettingsFilename)
 from modswap.helpers.uassetHelpers import UassetGuiProgramStem
@@ -32,11 +34,15 @@ from modswap.runtime.runCommand import (DefaultLauncherStartsGame,
                                         readSettingsRecursive)
 
 
-def getYesOrNoStr(flag):
+def getYesOrNoStr(flag, allowNone=False):
+    if allowNone and flag is None:
+        return 'unknown'
     return 'yes' if flag else 'no'
 
 
-def getOnOrOffStr(flag):
+def getOnOrOffStr(flag, allowNone=False):
+    if allowNone and flag is None:
+        return 'unknown'
     return 'on' if flag else 'off'
 
 
@@ -191,6 +197,16 @@ def runMenu(args, parser):
     if gameVersion != menuSettings.get('gameVersion', None):
         menuSettings['gameVersion'] = gameVersion
         menuSettingsDirty = True
+
+    srcPakPath = (args.srcPakPath or '').strip()
+    srcPakPaths = []
+    if srcPakPath:
+        srcPakPaths = glob.glob(srcPakPath)
+        if not srcPakPaths:
+            srcPakPaths = [srcPakPath]
+
+    customizationItemDbPath = (args.customizationItemDbPath or '').strip()
+    prevGameVersion = (args.prevGameVersion or '').strip()
 
     pakingDir = (args.pakingDir or '').strip() or menuSettings.get('pakingDir', None) or None
     if pakingDir:
@@ -429,6 +445,7 @@ def runMenu(args, parser):
                                  'attachmentsFolder',
                                  'socketsFolder',
                                  'socketsDirectory']},
+                    {'name': 'upgrade'},
                     {'name': 'back',
                      'aliases': ['return',
                                  'previous']},
@@ -465,6 +482,7 @@ def runMenu(args, parser):
                      'aliases': ['exit']},
                 ],
             },
+            {'name': 'upgrade', 'hidden': True},
             {'name': 'mix'},
             {'name': 'pak'},
             {'title': 'Flags'},
@@ -527,10 +545,11 @@ def runMenu(args, parser):
         searchingGameAssets = False
         creatingAttachments = False
         extractingAttachments = False
-        renaingAttachmentFiles = False
+        renamingAttachmentFiles = False
         mixingAttachments = False
         paking = False
         installingMods = False
+        upgradingMods = False
         openingGameLauncher = False
         killingGame = False
 
@@ -547,7 +566,11 @@ def runMenu(args, parser):
             if showServerRunning:
                 gameServerRunning = getGameServerIsRunning()
             if showGameRunning:
-                gameRunning = getGameIsRunning()
+                gameProgramName = getGameProgramName(settings)
+                if gameProgramName:
+                    gameRunning = getGameIsRunning(gameProgramName)
+                else:
+                    gameRunning = None
 
             sprintPad()
             # TODO: remove
@@ -558,9 +581,9 @@ def runMenu(args, parser):
                 sprint(f"Dry run: {getFlagValueStr(dryRun)}")
                 sprint(f"Debug: {getFlagValueStr(debug)}")
             if showServerRunning:
-                sprint(f'Game server running: {getYesOrNoStr(gameServerRunning)}')
+                sprint(f'Game server running: {getYesOrNoStr(gameServerRunning, allowNone=True)}')
             if showGameRunning:
-                sprint(f'Game running: {getYesOrNoStr(gameRunning)}')
+                sprint(f'Game running: {getYesOrNoStr(gameRunning, allowNone=True)}')
 
             sprintPad()
 
@@ -1114,10 +1137,13 @@ def runMenu(args, parser):
                 creatingAttachments = True
                 shouldRunMain = True
             if popAction('rename'):
-                renaingAttachmentFiles = True
+                renamingAttachmentFiles = True
                 shouldRunMain = True
             if popAction('mix'):
                 mixingAttachments = True
+                shouldRunMain = True
+            if popAction('upgrade'):
+                upgradingMods = True
                 shouldRunMain = True
             if popAction('pak'):
                 paking = True
@@ -1209,36 +1235,76 @@ def runMenu(args, parser):
             if shouldRunMain:
                 prepActionRun()
                 sprintPad()
-                runner = ModSwapCommandRunner()
-                exitCode = runner.runCommand(
-                    fromMenu=True,
-                    settingsFilePath=settingsFilePath,
-                    gameDir=gameDir,
-                    gameVersion=gameVersion,
-                    pakingDir=pakingDir,
-                    attachmentsDir=attachmentsDir,
-                    unrealProjectDir=unrealProjectDir,
-                    uassetGuiPath=uassetGuiPath,
-                    unrealPakPath=unrealPakPath,
-                    sigFilePath=sigFilePath,
-                    umodelPath=umodelPath,
-                    activeModConfigName=activeModConfigName,
-                    inspecting=inspecting,
-                    creatingAttachments=creatingAttachments,
-                    extractingAttachments=extractingAttachments,
-                    renamingAttachmentFiles=renaingAttachmentFiles,
-                    mixingAttachments=mixingAttachments,
-                    paking=paking,
-                    installingMods=installingMods,
-                    openingGameLauncher=openingGameLauncher,
-                    launcherStartsGame=launcherStartsGame,
-                    killingGame=killingGame,
-                    searchingGameAssets=searchingGameAssets,
-                    nonInteractive=False,
-                    debug=debug,
-                    dryRun=dryRun,
-                    overwriteOverride=overwriteOverride,
-                )
+                iterations = 1
+                if True:
+                    # TODO: refactor multiple iterations to be handled by ModSwapCommandRunner.runCommand()
+                    if (
+                        len(srcPakPaths) > 1
+                        and not (settings.get('srcPakPaths', None) or '').strip()
+                        and not creatingAttachments
+                        and not renamingAttachmentFiles
+                        and not openingGameLauncher
+                        and not killingGame
+                        and not searchingGameAssets
+                    ):
+                        iterations = len(srcPakPaths)
+                        sprintPad()
+                        sprint(f'Mulitiple pakchunks queued ({len(srcPakPaths)}):')
+                        sprintPad()
+                        for srcPakPath in srcPakPaths:
+                            sprint(srcPakPath)
+                        if not confirm('run action(s) on each packchunk', emptyMeansNo=False, pad=True):
+                            iterations = 0
+                        else:
+                            sprintSeparator()
+
+                srcPakPathErrorCodeMap = {}
+                for i in range(iterations):
+                    srcPakPath = srcPakPaths[i] if i < len(srcPakPaths) else None
+
+                    runner = ModSwapCommandRunner()
+                    exitCode = runner.runCommand(
+                        fromMenu=True,
+                        settingsFilePath=settingsFilePath,
+                        gameDir=gameDir,
+                        gameVersion=gameVersion,
+                        pakingDir=pakingDir,
+                        attachmentsDir=attachmentsDir,
+                        unrealProjectDir=unrealProjectDir,
+                        uassetGuiPath=uassetGuiPath,
+                        unrealPakPath=unrealPakPath,
+                        sigFilePath=sigFilePath,
+                        umodelPath=umodelPath,
+                        activeModConfigName=activeModConfigName,
+                        inspecting=inspecting,
+                        creatingAttachments=creatingAttachments,
+                        extractingAttachments=extractingAttachments,
+                        renamingAttachmentFiles=renamingAttachmentFiles,
+                        srcPakPath=srcPakPath,
+                        customizationItemDbPath=customizationItemDbPath,
+                        prevGameVersion=prevGameVersion,
+                        upgradingMods=upgradingMods,
+                        mixingAttachments=mixingAttachments,
+                        paking=paking,
+                        installingMods=installingMods,
+                        openingGameLauncher=openingGameLauncher,
+                        launcherStartsGame=launcherStartsGame,
+                        killingGame=killingGame,
+                        searchingGameAssets=searchingGameAssets,
+                        nonInteractive=False,
+                        debug=debug,
+                        dryRun=dryRun,
+                        overwriteOverride=overwriteOverride,
+                    )
+                    if exitCode:
+                        srcPakPathErrorCodeMap[srcPakPath] = exitCode
+
+                if iterations > 1 and srcPakPathErrorCodeMap:
+                    sprintSeparator()
+                    esprint(f'Errors in {len(srcPakPathErrorCodeMap)} pakchunks:')
+                    for srcPakPath, errorCode in srcPakPathErrorCodeMap.items():
+                        sprint(f'{srcPakPath}: error code {errorCode}')
+
                 if openingGameLauncher and not dryRun:
                     # TODO: what if the exit code is bad? Then, set shouldPromptToContinue?
                     pass
