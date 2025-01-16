@@ -251,6 +251,7 @@ Compatible with:
 * EFog:
   * 4.4.2
   * 6.5.2
+  * 6.7.0 (*not fully tested)
 * Cooked assets, UnrealPak, and Umodel for Unreal Engine versions:
   * 4.25
   * 4.27
