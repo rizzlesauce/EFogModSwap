@@ -1,6 +1,6 @@
 ProgramName = 'EFogModSwap'
 ProgramFilename = f'{ProgramName}.exe'
-Version = '0.3.4'
+Version = '0.3.5'
 Author = 'Ross Adamson'
 License = 'MIT'
 ConsoleTitle = f'{ProgramName} - By Ross'
