@@ -209,11 +209,14 @@ def unrealUnpak(pakPath, destDir, gameName, unrealPakPath, checkInput=None, debu
 
     args = [
         pakPathInfo['absolute'],
-        '-extract',
+        '-Extract',
         actualDestDir,
-        # TODO: remove - doesn't seem to be needed
-        #'-extracttomountpoint',
     ]
+
+    # no need for this because we construct the base files ahead of time. TODO: use this so we don't have to create the base folder hierarchy.
+    extractingToMountPoint = False
+    if extractingToMountPoint:
+        args.append('-extracttomountpoint')
 
     if True:
         commandReturnCode = None

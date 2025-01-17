@@ -2952,18 +2952,25 @@ class ModSwapCommandRunner():
                         srcAssetCount = 0
                         srcFileCount = 0
 
+                        def assetIsMissingUasset(asset):
+                            return (
+                                (
+                                    UexpFilenameSuffix in assetStemPathSourceFilesMap[asset]['fileSuffixes']
+                                    or UbulkFilenameSuffix in assetStemPathSourceFilesMap[asset]['fileSuffixes']
+                                )
+                                and UassetFilenameSuffix not in assetStemPathSourceFilesMap[asset]['fileSuffixes']
+                            )
+
+                        shouldFailIfMissingUasset = False
+                        shouldWarnIfMissingUasset = True
+
                         missingAssets = False
                         for asset in destPakAssets:
-                            if (
+                            missing = (
                                 asset not in assetStemPathSourceFilesMap
-                                or (
-                                    (
-                                        UexpFilenameSuffix in assetStemPathSourceFilesMap[asset]['fileSuffixes']
-                                        or UbulkFilenameSuffix in assetStemPathSourceFilesMap[asset]['fileSuffixes']
-                                    )
-                                    and UassetFilenameSuffix not in assetStemPathSourceFilesMap[asset]['fileSuffixes']
-                                )
-                            ):
+                                or (shouldFailIfMissingUasset and assetIsMissingUasset(asset))
+                            )
+                            if missing:
                                 missingAssets = True
                                 message = f'Missing "{asset}" from source content folders'
                                 if paking:
@@ -2971,6 +2978,8 @@ class ModSwapCommandRunner():
                                 else:
                                     self.printWarning(message)
                             else:
+                                if not shouldFailIfMissingUasset and shouldWarnIfMissingUasset and assetIsMissingUasset(asset):
+                                    self.printWarning(f'Missing accompanying "{asset}{UassetFilenameSuffix}" from source content folders')
                                 sourceFilesInfo = assetStemPathSourceFilesMap[asset]
                                 srcAssetCount += 1
                                 srcFileCount += len(sourceFilesInfo['fileSuffixes'])
