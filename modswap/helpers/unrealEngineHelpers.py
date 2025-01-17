@@ -20,7 +20,7 @@ OtherAssetFileExtensions = {
     # sound bank and audio files
     '.bnk',
     '.wem',
-    #'.wav',
+    '.wav',
     #'.ogg',
     #'.mp3',
     #'.mp4',
@@ -49,6 +49,10 @@ OtherAssetFileExtensions = {
     # font files
     #'.ttf',
     #'.otf',
+    # backup files
+    '.bak',
+    # other files
+    '.mat',
 }
 AllAssetFileExtensions = UnrealEngineCookedSplitFileExtensions.union(OtherAssetFileExtensions)
 

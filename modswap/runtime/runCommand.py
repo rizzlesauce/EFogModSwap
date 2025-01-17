@@ -2245,23 +2245,29 @@ class ModSwapCommandRunner():
                             for pathIndex, path in enumerate(listFilesRecursively(srcPakContentDir)):
                                 srcPakContentPaths.append(path)
                                 assetPathInfo = getAssetStemPathInfo(path)
+                                stemPath = None
                                 if assetPathInfo:
-                                    if assetPathInfo['stemPath'] not in srcPakContentAssetPathsMap:
-                                        srcPakContentAssetPathsMap[assetPathInfo['stemPath']] = []
-                                        if self.debug:
-                                            sprint(f'Asset {len(srcPakContentAssetPathsMap)}: {assetPathInfo["stemPath"]}')
-                                    srcPakContentAssetPathsMap[assetPathInfo['stemPath']].append(assetPathInfo['suffix'])
-                                    if assetPathInfo['stemPath'] not in assetStemPathSourceFilesMap:
-                                        assetStemPathSourceFilesMap[assetPathInfo['stemPath']] = {
-                                            'contentDir': srcPakContentDir,
-                                            'fileSuffixes': srcPakContentAssetPathsMap[assetPathInfo['stemPath']],
-                                        }
+                                    stemPath = assetPathInfo['stemPath']
+                                    pathSuffix = assetPathInfo['suffix']
                                 else:
-                                    message = f'Unrecognized pakchunk asset type: "{path}"'
-                                    if paking and destPakAssets is None:
-                                        self.printError(message)
-                                    else:
-                                        self.printWarning(message)
+                                    self.printWarning(f'Unrecognized asset type: "{path}"')
+                                    pathInfo = getPathInfo(path)
+                                    stemPath = pathInfo['stem']
+                                    pathSuffix = pathInfo['suffix']
+
+                                if stemPath is not None:
+                                    if stemPath not in srcPakContentAssetPathsMap:
+                                        srcPakContentAssetPathsMap[stemPath] = []
+                                        if self.debug:
+                                            sprint(f'Asset {len(srcPakContentAssetPathsMap)}: "{stemPath}"')
+                                    srcPakContentAssetPathsMap[stemPath].append(pathSuffix)
+                                    if stemPath not in assetStemPathSourceFilesMap:
+                                        assetStemPathSourceFilesMap[stemPath] = {
+                                            'contentDir': srcPakContentDir,
+                                            'fileSuffixes': srcPakContentAssetPathsMap[stemPath],
+                                        }
+                                    elif pathSuffix not in assetStemPathSourceFilesMap[stemPath]['fileSuffixes']:
+                                        assetStemPathSourceFilesMap[stemPath]['fileSuffixes'].append(pathSuffix)
 
                                 if self.debug:
                                     sprint(f'{pathIndex + 1} - {path}')
@@ -2976,20 +2982,19 @@ class ModSwapCommandRunner():
 
                         missingAssets = False
                         for asset in destPakAssets:
-                            missing = (
+                            if (
                                 asset not in assetStemPathSourceFilesMap
                                 or (shouldFailIfMissingMainFile and assetIsMissingMainFile(asset))
-                            )
-                            if missing:
+                            ):
                                 missingAssets = True
-                                message = f'Missing "{asset}" from source content folders'
+                                message = f'Missing asset "{asset}" from source content folders'
                                 if paking:
                                     self.printError(message)
                                 else:
                                     self.printWarning(message)
                             else:
                                 if not shouldFailIfMissingMainFile and shouldWarnIfMissingMainFile and assetIsMissingMainFile(asset):
-                                    self.printWarning(f'Missing accompanying "{asset}{UassetFilenameSuffix}" from source content folders')
+                                    self.printWarning(f'Missing accompanying {UassetFilenameSuffix} or {UmapFilenameSuffix} from source content folders asset "{asset}"')
                                 sourceFilesInfo = assetStemPathSourceFilesMap[asset]
                                 srcAssetCount += 1
                                 srcFileCount += len(sourceFilesInfo['fileSuffixes'])
@@ -3000,7 +3005,7 @@ class ModSwapCommandRunner():
                         sprint(f'Done searching. Found {srcAssetCount} assets ({srcFileCount} files).')
                         sprintPad()
 
-                        if paking and not missingAssets:
+                        if paking and not missingAssets and not self.exitCode:
                             if not destPakContentDir:
                                 self.printError(f'Cannot create pak because destination content folder is missing')
                             else:
