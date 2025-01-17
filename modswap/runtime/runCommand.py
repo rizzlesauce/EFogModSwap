@@ -2254,11 +2254,10 @@ class ModSwapCommandRunner():
                                     pathSuffix = assetPathInfo['suffix']
                                 else:
                                     self.printWarning(f'Unrecognized asset type: "{path}"')
-                                    pathInfo = getPathInfo(path)
-                                    stemPath = pathInfo['stem']
-                                    pathSuffix = pathInfo['suffix']
+                                    pathSuffix = pathlib.Path(path).suffix
+                                    stemPath = path[:-len(pathSuffix)]
 
-                                if stemPath is not None:
+                                if stemPath:
                                     if stemPath not in srcPakContentAssetPathsMap:
                                         srcPakContentAssetPathsMap[stemPath] = []
                                         if self.debug:
@@ -2269,8 +2268,6 @@ class ModSwapCommandRunner():
                                             'contentDir': srcPakContentDir,
                                             'fileSuffixes': srcPakContentAssetPathsMap[stemPath],
                                         }
-                                    elif pathSuffix not in assetStemPathSourceFilesMap[stemPath]['fileSuffixes']:
-                                        assetStemPathSourceFilesMap[stemPath]['fileSuffixes'].append(pathSuffix)
 
                                 if self.debug:
                                     sprint(f'{pathIndex + 1} - {path}')
