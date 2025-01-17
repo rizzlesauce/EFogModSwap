@@ -49,10 +49,10 @@ OtherAssetFileExtensions = {
     # font files
     #'.ttf',
     #'.otf',
-    # backup files
-    '.bak',
-    # other files
+    # material files
     '.mat',
+    # backup files - these should generally not be included in packaged mods
+    #'.bak',
 }
 AllAssetFileExtensions = UnrealEngineCookedSplitFileExtensions.union(OtherAssetFileExtensions)
 
