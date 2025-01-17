@@ -5,14 +5,50 @@ from .pathHelpers import normPath
 UassetJsonSuffix = '.uasset.json'
 
 UassetFilenameSuffix = '.uasset'
+UmapFilenameSuffix = '.umap'
 UexpFilenameSuffix = '.uexp'
 UbulkFilenameSuffix = '.ubulk'
-UnrealEngineCookedSplitFileExtensions = {UassetFilenameSuffix, UbulkFilenameSuffix, UexpFilenameSuffix}
+UfontFilenameSuffix = '.ufont'
+UnrealEngineCookedSplitFileExtensions = {
+    UassetFilenameSuffix,
+    UmapFilenameSuffix,
+    UbulkFilenameSuffix,
+    UexpFilenameSuffix,
+    UfontFilenameSuffix,
+}
 OtherAssetFileExtensions = {
+    # sound bank and audio files
     '.bnk',
+    '.wem',
+    #'.wav',
+    #'.ogg',
+    #'.mp3',
+    #'.mp4',
+    #'.mov',
+    #'.wmv',
+    #'.avi',
+    # text files
     '.json',
     '.xml',
-    '.wem',
+    '.csv',
+    '.txt',
+    # data files
+    '.bin',
+    '.dat',
+    # shader files (possibly included)
+    #'.shader',
+    #'.ush',
+    #'.usf',
+    # scripts (uncommon)
+    #'.lua',
+    #'.py',
+    # localization files
+    '.locres',
+    # config files
+    '.ini',
+    # font files
+    #'.ttf',
+    #'.otf',
 }
 AllAssetFileExtensions = UnrealEngineCookedSplitFileExtensions.union(OtherAssetFileExtensions)
 

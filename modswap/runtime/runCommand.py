@@ -86,7 +86,8 @@ from modswap.helpers.umodelHelpers import (UmodelProgramStem,
                                            runUmodelCommand)
 from modswap.helpers.unrealEngineHelpers import (
     UassetFilenameSuffix, UassetJsonSuffix, UbulkFilenameSuffix,
-    UexpFilenameSuffix, getAssetSplitFilePaths, getAssetStemPathInfo,
+    UexpFilenameSuffix, UfontFilenameSuffix, UmapFilenameSuffix,
+    getAssetSplitFilePaths, getAssetStemPathInfo,
     getUnrealProjectCookedContentDir)
 from modswap.helpers.windowsHelpers import (getIsRunningAsAdmin, openFolder,
                                             setConsoleTitle)
@@ -2255,6 +2256,12 @@ class ModSwapCommandRunner():
                                             'contentDir': srcPakContentDir,
                                             'fileSuffixes': srcPakContentAssetPathsMap[assetPathInfo['stemPath']],
                                         }
+                                else:
+                                    message = f'Unrecognized pakchunk asset type: "{path}"'
+                                    if paking and destPakAssets is None:
+                                        self.printError(message)
+                                    else:
+                                        self.printWarning(message)
 
                                 if self.debug:
                                     sprint(f'{pathIndex + 1} - {path}')
@@ -2952,23 +2959,26 @@ class ModSwapCommandRunner():
                         srcAssetCount = 0
                         srcFileCount = 0
 
-                        def assetIsMissingUasset(asset):
+                        def assetIsMissingMainFile(asset):
+                            suffixes = assetStemPathSourceFilesMap[asset]['fileSuffixes']
                             return (
                                 (
-                                    UexpFilenameSuffix in assetStemPathSourceFilesMap[asset]['fileSuffixes']
-                                    or UbulkFilenameSuffix in assetStemPathSourceFilesMap[asset]['fileSuffixes']
+                                    UexpFilenameSuffix in suffixes
+                                    or UbulkFilenameSuffix in suffixes
+                                    or UfontFilenameSuffix in suffixes
                                 )
-                                and UassetFilenameSuffix not in assetStemPathSourceFilesMap[asset]['fileSuffixes']
+                                and UassetFilenameSuffix not in suffixes
+                                and UmapFilenameSuffix not in suffixes
                             )
 
-                        shouldFailIfMissingUasset = False
-                        shouldWarnIfMissingUasset = True
+                        shouldFailIfMissingMainFile = True
+                        shouldWarnIfMissingMainFile = True
 
                         missingAssets = False
                         for asset in destPakAssets:
                             missing = (
                                 asset not in assetStemPathSourceFilesMap
-                                or (shouldFailIfMissingUasset and assetIsMissingUasset(asset))
+                                or (shouldFailIfMissingMainFile and assetIsMissingMainFile(asset))
                             )
                             if missing:
                                 missingAssets = True
@@ -2978,7 +2988,7 @@ class ModSwapCommandRunner():
                                 else:
                                     self.printWarning(message)
                             else:
-                                if not shouldFailIfMissingUasset and shouldWarnIfMissingUasset and assetIsMissingUasset(asset):
+                                if not shouldFailIfMissingMainFile and shouldWarnIfMissingMainFile and assetIsMissingMainFile(asset):
                                     self.printWarning(f'Missing accompanying "{asset}{UassetFilenameSuffix}" from source content folders')
                                 sourceFilesInfo = assetStemPathSourceFilesMap[asset]
                                 srcAssetCount += 1
