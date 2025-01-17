@@ -1,6 +1,9 @@
 import glob
 import os
+import pathlib
 import platform
+import shutil
+import tempfile
 
 import semver
 import yaml
@@ -1236,6 +1239,8 @@ def runMenu(args, parser):
                 prepActionRun()
                 sprintPad()
                 iterations = 1
+                aggregateResultsFile = None
+                resultsFilePath = getResultsFilePath(settingsFilePath)
                 if True:
                     # TODO: refactor multiple iterations to be handled by ModSwapCommandRunner.runCommand()
                     if (
@@ -1253,10 +1258,20 @@ def runMenu(args, parser):
                         sprintPad()
                         for srcPakPath in srcPakPaths:
                             sprint(srcPakPath)
-                        if not confirm('run action(s) on each packchunk', emptyMeansNo=False, pad=True):
+                        if not confirm(f'run action(s) on each packchunk (total runs: {len(srcPakPaths)})', emptyMeansNo=False, pad=True):
                             iterations = 0
                         else:
                             sprintSeparator()
+                            aggregateResultsFile = tempfile.NamedTemporaryFile(
+                                mode='w',
+                                encoding='utf-8',
+                                dir=getPathInfo(settingsFilePath)['dir'],
+                                prefix=f'{getPathInfo(resultsFilePath)["stem"]}_',
+                                suffix='.yaml',
+                                delete=False,
+                            )
+                            aggregateResultsFile.write('results:\n')
+                            aggregateResultsFile.flush()
 
                 srcPakPathErrorCodeMap = {}
                 for i in range(iterations):
@@ -1299,11 +1314,53 @@ def runMenu(args, parser):
                     if exitCode:
                         srcPakPathErrorCodeMap[srcPakPath] = exitCode
 
+                    if aggregateResultsFile is not None:
+                        if runner.wroteResults:
+                            with open(resultsFilePath, 'r', encoding='utf-8') as file:
+                                isFirstLine = True
+                                for line in file:
+                                    if isFirstLine:
+                                        aggregateResultsFile.write(f'- {srcPakPath}:\n')
+                                        aggregateResultsFile.flush()
+                                        isFirstLine = False
+
+                                    aggregateResultsFile.write(f'  {line}')
+                                    aggregateResultsFile.flush()
+
                 if iterations > 1 and srcPakPathErrorCodeMap:
                     sprintSeparator()
                     esprint(f'Errors in {len(srcPakPathErrorCodeMap)} pakchunks:')
+                    errorPakchunks = []
                     for srcPakPath, errorCode in srcPakPathErrorCodeMap.items():
                         sprint(f'{srcPakPath}: error code {errorCode}')
+                        errorPakchunks.append(srcPakPath)
+                    if errorPakchunks and aggregateResultsFile is not None:
+                        yamlDump(
+                            {
+                                'errorPakchunks': errorPakchunks,
+                            },
+                            aggregateResultsFile,
+                        )
+                        aggregateResultsFile.flush()
+                    sprintPad()
+
+                if aggregateResultsFile is not None:
+                    aggregateResultsFile.close()
+                    sprint(f'{runner.dryRunPrefix}Moving aggregate results to "{resultsFilePath}"...')
+                    shouldWrite = not runner.dryRun or (not runner.nonInteractive and confirm(f'write aggregate results "{resultsFilePath}" despite dry run', pad=True, emptyMeansNo=True))
+                    written = False
+                    if shouldWrite:
+                        if runner.readyToWrite(resultsFilePath, dryRunHere=False):
+                            shutil.move(aggregateResultsFile.name, resultsFilePath)
+                            written = True
+                    if written or runner.dryRun:
+                        sprint(f'{runner.dryRunPrefix if not written else ""}Done moving.')
+                    sprintPad()
+
+                    if not written:
+                        pathlib.Path(aggregateResultsFile).unlink(missing_ok=True)
+
+                    aggregateResultsFile = None
 
                 if openingGameLauncher and not dryRun:
                     # TODO: what if the exit code is bad? Then, set shouldPromptToContinue?

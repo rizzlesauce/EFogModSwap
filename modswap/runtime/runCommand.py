@@ -155,6 +155,7 @@ class ModSwapCommandRunner():
         self.listener = None
         self.shouldView = False
         self.searchingSlots = None
+        self.wroteResults = False
 
     def getUmodelGameTag(self):
         if self.unrealEngineVersion:
@@ -1158,6 +1159,8 @@ class ModSwapCommandRunner():
             file.flush()
 
         self.dryRunPrefix = self.DryRunPrefix if self.dryRun else ''
+
+        self.wroteResults = False
 
         launcherClearsScreenBuffer = False
         if launcherStartsGame is None:
@@ -3783,6 +3786,7 @@ class ModSwapCommandRunner():
                     with open(outputInfoFilename, 'w', encoding='utf-8') as file:
                         yamlDump(jsonifyDataRecursive(outputInfo), file)
                         written = True
+                        self.wroteResults = True
             if written or self.dryRun:
                 sprint(f'{self.dryRunPrefix if not written else ""}Done writing.')
             sprintPad()
