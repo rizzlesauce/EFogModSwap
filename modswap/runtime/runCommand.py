@@ -2209,8 +2209,12 @@ class ModSwapCommandRunner():
                             written = False
                             if shouldWrite:
                                 if self.readyToWrite(srcPakDir, dryRunHere=False):
-                                    unrealUnpak(srcPakPath, srcPakDir, gameName, unrealPakPath, debug=self.debug)
-                                    written = True
+                                    checkInput = self.startKeyboardListener()
+                                    try:
+                                        unrealUnpak(srcPakPath, srcPakDir, gameName, unrealPakPath, debug=self.debug, checkInput=checkInput)
+                                        written = True
+                                    finally:
+                                        self.stopKeyboardListener()
                             if written or self.dryRun:
                                 sprint(f'{self.dryRunPrefix if not written else ""}Done unpaking.')
                             sprintPad()
@@ -3054,7 +3058,11 @@ class ModSwapCommandRunner():
                                     if os.path.exists(unrealPakPath):
                                         # TODO: check readyToWrite()?
                                         if not self.dryRun:
-                                            unrealPak(destPakDir, destPakPath, unrealPakPath)
+                                            checkInput = self.startKeyboardListener()
+                                            try:
+                                                unrealPak(destPakDir, destPakPath, unrealPakPath, debug=self.debug, checkInput=checkInput)
+                                            finally:
+                                                self.stopKeyboardListener()
                                             if sigFilePath:
                                                 # TODO: check readyToWrite()?
                                                 destSigPath = pakchunkToSigFilePath(destPakPath)
@@ -3524,7 +3532,7 @@ class ModSwapCommandRunner():
                                         pakchunkDir = normPath(os.path.join(tempDir, pakchunkStem))
                                         sprint(f'Unpaking "{pakchunkPath}" to temporary folder "{pakchunkDir}"...')
                                         try:
-                                            unrealUnpak(pakchunkPath, pakchunkDir, gameName, unrealPakPath, debug=self.debug)
+                                            unrealUnpak(pakchunkPath, pakchunkDir, gameName, unrealPakPath, debug=self.debug, checkInput=checkInput)
                                         except Exception as e:
                                             self.printError(e)
                                             continue

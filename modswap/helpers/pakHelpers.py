@@ -99,7 +99,7 @@ def pakchunkToSigFilePath(path):
     return f'{path}{PakchunkSigFilenameSuffix}'
 
 
-def unrealPak(pakDir, destPakPath, unrealPakPath, compress=True, debug=False, extraCompressionSettings=True):
+def unrealPak(pakDir, destPakPath, unrealPakPath, compress=True, debug=False, extraCompressionSettings=True, checkInput=None):
     pakDirPathInfo = getPathInfo(pakDir)
     responseFileContent = f'"{pakDirPathInfo["absolute"]}\*.*" "..\..\..\*.*" '
     if debug:
@@ -112,7 +112,7 @@ def unrealPak(pakDir, destPakPath, unrealPakPath, compress=True, debug=False, ex
     programPath = normPath(os.path.join(programPathInfo['dir'], programFilename))
     responseFilePath = None
 
-    def runCommand(responseFile):
+    def runCommandLocal(responseFile):
         if debug:
             sprintPad()
             sprint(f'Running UnrealPak')
@@ -124,7 +124,6 @@ def unrealPak(pakDir, destPakPath, unrealPakPath, compress=True, debug=False, ex
         responseFile.close()
 
         args = [
-            programPath,
             getPathInfo(destPakPath)['absolute'],
             f'-create={normPath(responseFile.name)}',
         ]
@@ -144,7 +143,36 @@ def unrealPak(pakDir, destPakPath, unrealPakPath, compress=True, debug=False, ex
             sprintP(args)
             sprintPad()
 
-        runCall(args, cwd=programPathInfo['dir'])
+        if True:
+            commandReturnCode = None
+            commandError = None
+            for commandStreamName, commandLine, commandStop in runCommand(
+                programPath,
+                args,
+                cwd=programPathInfo['dir'],
+            ):
+                if checkInput is not None and not checkInput():
+                    commandStop()
+                if commandStreamName == 'return_code':
+                    commandReturnCode = commandLine
+                elif commandStreamName == 'stderr':
+                    if commandError is None or commandError is True:
+                        commandError = commandLine or True
+                    if debug:
+                        sprintPad()
+                        esprint(commandLine or '[stderr].')
+                        sprintPad()
+                elif debug:
+                    sprint(commandLine)
+
+            if commandReturnCode:
+                quoted = [f'"{arg}"' for arg in [programPath, *args]]
+                raise ValueError(f'subprocess call failed: cwd="{programPathInfo["dir"]}" {" ".join(quoted)}. Exit code: {commandReturnCode}. Error: {commandError}')
+
+            if debug:
+                sprint(f'Exit code: {commandReturnCode}')
+        else:
+            runCall([programPath, *args], cwd=programPathInfo['dir'])
 
     usingTempFile = True
 
@@ -158,11 +186,11 @@ def unrealPak(pakDir, destPakPath, unrealPakPath, compress=True, debug=False, ex
             dir=programPathInfo['dir'],
             encoding='utf-8',
         ) as file:
-            runCommand(file)
+            runCommandLocal(file)
     else:
         responseFilePath = normPath(os.path.join(programPathInfo['dir'], f'{fileStem}.txt'))
         with open(responseFilePath, 'w', encoding='utf-8') as file:
-            runCommand(file)
+            runCommandLocal(file)
 
     # TODO: do we need to use gamepath.txt or do anything with *.sig files here?
 
@@ -188,26 +216,32 @@ def unrealUnpak(pakPath, destDir, gameName, unrealPakPath, checkInput=None, debu
     ]
 
     if True:
-        unpakReturnCode = None
-        unpakError = False
-        for unpakStreamName, unpakLine, unpakStop in runCommand(
+        commandReturnCode = None
+        commandError = None
+        for commandStreamName, commandLine, commandStop in runCommand(
             programPath,
             args,
             cwd=programPathInfo['dir'],
         ):
             if checkInput is not None and not checkInput():
-                unpakStop()
-            if unpakStreamName == 'return_code':
-                unpakReturnCode = unpakLine
-            elif unpakStreamName == 'stderr' and 'ERROR' in unpakLine:
+                commandStop()
+            if commandStreamName == 'return_code':
+                commandReturnCode = commandLine
+            elif commandStreamName == 'stderr':
+                if commandError is None or commandError is True:
+                    commandError = commandLine or True
                 if debug:
                     sprintPad()
-                    esprint(unpakLine)
+                    esprint(commandLine or '[stderr].')
                     sprintPad()
-                unpakError = unpakLine
             elif debug:
-                sprint(unpakLine)
-        if unpakReturnCode or unpakError:
-            raise ValueError(f'Failed to unpak "{pakPath}"')
+                sprint(commandLine)
+
+        if commandReturnCode:
+            quoted = [f'"{arg}"' for arg in [programPath, *args]]
+            raise ValueError(f'subprocess call failed: cwd="{programPathInfo["dir"]}" {" ".join(quoted)}. Exit code: {commandReturnCode}. Error: {commandError}')
+
+        if debug:
+            sprint(f'Exit code: {commandReturnCode}')
     else:
         runCall([programPath, *args], cwd=programPathInfo['dir'])

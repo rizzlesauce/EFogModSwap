@@ -37,9 +37,7 @@ async def _runCommandAsync(command, args, queue, cwd=None):
 
     returnCode = await process.wait()
 
-    await queue.put(None)
-
-    return returnCode
+    await queue.put(('return_code', returnCode, stop))
 
 
 def runCommand(command, args, cwd=None):
@@ -48,8 +46,8 @@ def runCommand(command, args, cwd=None):
     queue = asyncio.Queue()
 
     async def _internal():
-        returnCode = await _runCommandAsync(command, args, queue, cwd=cwd)
-        await queue.put(('return_code', returnCode))
+        await _runCommandAsync(command, args, queue, cwd=cwd)
+        await queue.put(None)
 
     loop.create_task(_internal())
 
