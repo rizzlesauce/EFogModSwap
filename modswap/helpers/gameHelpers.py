@@ -104,11 +104,15 @@ def getLauncherBatchFileContent(
     if not gameVersion:
         gameVersion = '4.4.2' if usingServer else DefaultGameVersion
 
-    gameArgs = None
+    gameArgs = []
     if gameVersion == '4.4.2':
         gameArgs = ['-DX12']
     elif gameVersion == '6.7.0':
         gameArgs = ['-eac-nop-loaded']
+    gameArgs.extend([
+        '-SaveToUserDir',
+        '-UserDir="Data"',
+    ])
 
     gameBinariesRelDir = getGameBinariesRelDir(gameName)
 
