@@ -313,7 +313,9 @@ def upgradeCustomizationItemDb(customizationItemDb, gameVersion, newGameVersion,
     if newGameVersion != '6.7.0':
         raise ValueError('Only supports upgrading to version 6.7.0')
 
-    replacements = [
+    # TODO: use this in a different function to "unlock" items, levels, etc., in base game files.
+    # Another way of doing this is to not rename the field, but to change the value of the field.
+    lockReplacements = [
         {
             'from': {
                 'structType': 'CustomizationItemData',
@@ -356,21 +358,6 @@ def upgradeCustomizationItemDb(customizationItemDb, gameVersion, newGameVersion,
         },
         {
             'from': {
-                'structType': 'CustomizationItemData',
-                'Name': 'ID',
-                '$type': [
-                    'UAssetAPI.PropertyTypes.Objects.NamePropertyData, UAssetAPI',
-                    StringPropertyDataType,
-                ],
-            },
-            'to': {
-                'Name': 'CustomizationId',
-                '$type': StringPropertyDataType,
-                'index': -1,
-            },
-        },
-        {
-            'from': {
                 'structType': 'ItemAvailability',
                 'Name': 'itemAvailabilitx',
                 '$type': EnumPropertyDataType,
@@ -407,6 +394,24 @@ def upgradeCustomizationItemDb(customizationItemDb, gameVersion, newGameVersion,
             },
             'to': {
                 'Name': 'CommunityId',
+            },
+        },
+    ]
+
+    replacements = [
+        {
+            'from': {
+                'structType': 'CustomizationItemData',
+                'Name': 'ID',
+                '$type': [
+                    'UAssetAPI.PropertyTypes.Objects.NamePropertyData, UAssetAPI',
+                    StringPropertyDataType,
+                ],
+            },
+            'to': {
+                'Name': 'CustomizationId',
+                '$type': StringPropertyDataType,
+                'index': -1,
             },
         },
     ]
