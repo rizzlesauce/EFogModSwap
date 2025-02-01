@@ -30,7 +30,7 @@ def getPakchunkRefnameRegex():
         pakchunkRefnameRegexCompiled = re.compile(
             r'^'
             r'pakchunk(?P<number>0|[1-9]\d*)'
-            r'(?P<name>[()a-z_-]([()\w-]|\.[()\w-])*?)??'
+            r'(?P<name>[()a-z_-]([ ()\w-]|\.[()\w-])*?)??'
             r'(?P<platformPart>-'
                 r'(?P<platform>[a-z_](\w|\.\w)*?)'
                 r'(?P<platformSuffixPart>-'
