@@ -1400,7 +1400,7 @@ class ModSwapCommandRunner():
                 if inspecting:
                     self.printWarning('Missing or empty `gameDir`')
             elif not os.path.isdir(gameDir):
-                self.printError(f'`gameDir` is not a directory ("{gameDir}")')
+                self.printWarning(f'`gameDir` is not a directory or does not exist ("{gameDir}")')
                 gameDir = ''
 
             if not gameName:
