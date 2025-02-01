@@ -2421,13 +2421,23 @@ class ModSwapCommandRunner():
                         else:
                             if not customizationItemDbAssets and extraContentDir:
                                 customizationItemDbPath = getPathInfo(os.path.join(extraContentDir, customizationItemDbContentDirRelativePath))['best']
-                                if not os.path.exists(customizationItemDbPath):
+                                if os.path.exists(customizationItemDbPath):
+                                    customizationItemDbAssets.append({
+                                        'path': customizationItemDbPath,
+                                        'contentDirRelativePath': customizationItemDbContentDirRelativePath,
+                                    })
+                                else:
                                     self.printWarning(f'Extra content dir relative path "{customizationItemDbPath}" does not exist')
 
                             if not customizationItemDbAssets and unrealProjectDir:
                                 if cookedContentDir:
                                     customizationItemDbPath = getPathInfo(os.path.join(cookedContentDir, customizationItemDbContentDirRelativePath))['best']
-                                    if not os.path.exists(customizationItemDbPath):
+                                    if os.path.exists(customizationItemDbPath):
+                                        customizationItemDbAssets.append({
+                                            'path': customizationItemDbPath,
+                                            'contentDirRelativePath': customizationItemDbContentDirRelativePath,
+                                        })
+                                    else:
                                         self.printWarning(f'Content dir relative path "{customizationItemDbPath}" does not exist')
                                 else:
                                     message = 'Content folder relative path cannot be resolved because `unrealProjectDir` is missing content'
@@ -2446,6 +2456,9 @@ class ModSwapCommandRunner():
                             customizationItemDbAssets.append({
                                 'path': customizationItemDbPathUnaltered,
                             })
+
+                        if not customizationItemDbAssets and not customizationItemDbPathIsWildcard:
+                            self.printError(f'Failed to resolve `customizationItemDbPath` "{customizationItemDbPathUnaltered}"')
 
             assetsCopy = customizationItemDbAssets.copy()
             customizationItemDbAssets = []
