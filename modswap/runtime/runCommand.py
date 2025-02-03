@@ -1572,12 +1572,12 @@ class ModSwapCommandRunner():
                 self.printWarning('Missing or empty `attachmentConflicts`')
 
             if not combosToSkip:
-                combosToSkip = settings.get('combosToSkip', [])
+                combosToSkip = settings.get('combosToSkip', {})
             if not combosToSkip and inspecting:
                 self.printWarning('Missing or empty `combosToSkip`')
 
             if not combosRequired:
-                combosRequired = settings.get('combosRequired', [])
+                combosRequired = settings.get('combosRequired', {})
             if not combosRequired and inspecting:
                 self.printWarning('Missing or empty `combosRequired`')
 
