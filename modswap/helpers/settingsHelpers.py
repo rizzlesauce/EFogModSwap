@@ -20,7 +20,7 @@ DefaultAttachmentsDir = 'attachments'
 DefaultPakingDir = 'paking'
 
 def getGameName(settings):
-    gameName = settings.get('gameName', None) or DefaultGameName
+    gameName = (settings.get('gameName', None) or '').strip() or DefaultGameName
     return gameName
 
 

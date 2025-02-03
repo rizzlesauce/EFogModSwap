@@ -67,7 +67,7 @@ from modswap.helpers.settingsHelpers import (DefaultAttachmentsDir,
                                              DefaultPakingDir,
                                              findSettingsFiles,
                                              getContentDirRelativePath,
-                                             getGameProgramName,
+                                             getGameName, getGameProgramName,
                                              getResultsFilePath,
                                              getSettingsTemplate)
 from modswap.helpers.uassetHelpers import (AssetPathGamePrefix,
@@ -1404,10 +1404,14 @@ class ModSwapCommandRunner():
                 gameDir = ''
 
             if not gameName:
-                gameName = settings.get('gameName', '')
-            gameName = gameName.strip()
-            if not gameName and inspecting:
-                self.printWarning('Missing or empty `gameName`')
+                gameName = getGameName(settings)
+            if not gameName:
+                if inspecting:
+                    self.printWarning('Missing or empty `gameName`')
+            else:
+                sprintPad()
+                sprint(f'Game: {gameName}')
+                sprintPad()
 
             message = 'Missing, empty, or unresolved `gameProgramName`'
             if not gameProgramName:
