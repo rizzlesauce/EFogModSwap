@@ -99,6 +99,14 @@ will automatically be read from the source pakchunk filename. When you run `List
 the source pakchunk path, the tool will list out all the assets in the pakchunk to the results file,
 and you can copy and paste that into `destPakAssets` to include all those assets into the target pakchunk.
 
+### Batching mods
+
+You can run actions on multiple mods at once by batching settings files. To do so, you need a main
+settings file that contains a `batch` list, each item being a path to another settings file. Then,
+run actions as normal and it will apply to each mod in the batch.
+For example, `pak install launch` would package each mod in the batch, then
+install any updated mods targeted for installation, and finally launch the game.
+
 ### Upgrading mods
 
 To upgrade a mod from one game version to another, use the `Upgrade` action. `prevGameVersion` (upgrading from)

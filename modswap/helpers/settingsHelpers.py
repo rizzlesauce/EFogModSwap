@@ -69,6 +69,11 @@ f'''# {ProgramName} {Version} settings.
 #import:
 #- settings_common.yaml
 
+# Apply actions to multiple mods (settings files) in a batch
+#batch:
+#- settings_mod1.yaml
+#- settings_mod2.yaml
+
 ## Tools paths
 
 {

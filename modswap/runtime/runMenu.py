@@ -1276,6 +1276,7 @@ def runMenu(args, parser):
                 srcPakPathErrorCodeMap = {}
                 for i in range(iterations):
                     srcPakPath = srcPakPaths[i] if i < len(srcPakPaths) else None
+                    isLast = i == iterations - 1
 
                     runner = ModSwapCommandRunner()
                     exitCode = runner.runCommand(
@@ -1292,24 +1293,25 @@ def runMenu(args, parser):
                         umodelPath=umodelPath,
                         activeModConfigName=activeModConfigName,
                         inspecting=inspecting,
-                        creatingAttachments=creatingAttachments,
+                        creatingAttachments=creatingAttachments and isLast,
                         extractingAttachments=extractingAttachments,
-                        renamingAttachmentFiles=renamingAttachmentFiles,
+                        renamingAttachmentFiles=renamingAttachmentFiles and isLast,
                         srcPakPath=srcPakPath,
                         customizationItemDbPath=customizationItemDbPath,
                         prevGameVersion=prevGameVersion,
                         upgradingMods=upgradingMods,
                         mixingAttachments=mixingAttachments,
                         paking=paking,
-                        installingMods=installingMods,
-                        openingGameLauncher=openingGameLauncher,
+                        installingMods=installingMods and isLast,
+                        openingGameLauncher=openingGameLauncher and isLast,
                         launcherStartsGame=launcherStartsGame,
-                        killingGame=killingGame,
-                        searchingGameAssets=searchingGameAssets,
+                        killingGame=killingGame and isLast,
+                        searchingGameAssets=searchingGameAssets and isLast,
                         nonInteractive=False,
                         debug=debug,
                         dryRun=dryRun,
                         overwriteOverride=overwriteOverride,
+                        isBatchMode=not isLast,
                     )
                     if exitCode:
                         srcPakPathErrorCodeMap[srcPakPath] = exitCode

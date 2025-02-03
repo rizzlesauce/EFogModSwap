@@ -156,6 +156,7 @@ class ModSwapCommandRunner():
         self.shouldView = False
         self.searchingSlots = None
         self.wroteResults = False
+        self.isBatchMode = False
 
     def getUmodelGameTag(self):
         if self.unrealEngineVersion:
@@ -1130,6 +1131,7 @@ class ModSwapCommandRunner():
         self.unrealEngineVersion = kwargs.get('unrealEngineVersion', None)
         srcPakPath = (kwargs.get('srcPakPath', None) or '').strip()
         customizationItemDbPath = (kwargs.get('customizationItemDbPath', None) or '').strip()
+        self.isBatchMode = kwargs.get('isBatchMode', False)
 
         # TODO: attachmemt filters: characterID(s), item role(s), attachment type(s)
         # TODO: be able to specify regex and case insensitivity
@@ -1180,7 +1182,7 @@ class ModSwapCommandRunner():
         settingsDirPathInfo = getPathInfo(settingsFilePathInfo['dir'])
         discoveredSettingsFiles = []
 
-        if inspecting:
+        if inspecting and not self.isBatchMode:
             sprintPad()
             sprint(f'Scanning "{settingsDirPathInfo["best"]}" for settings files...')
             for filename in findSettingsFiles(settingsDirPathInfo['absolute']):
@@ -1288,6 +1290,31 @@ class ModSwapCommandRunner():
             settingsPathInfo = getPathInfo(settingsFilePath)
             settingsDir = settingsPathInfo['dir']
             settings = readSettingsRecursive(settingsFilePath)
+
+            settingsBatch = settings.get('batch', [])
+            if settingsBatch:
+                for otherSettingsFilePath in settingsBatch:
+                    try:
+                        sprintPad()
+                        sprint(f'Running batch settings file "{otherSettingsFilePath}"...')
+                        sprintPad()
+                        otherRunner = ModSwapCommandRunner()
+                        otherExitCode = otherRunner.runCommand(**{
+                            **kwargs,
+                            'settingsFilePath': otherSettingsFilePath,
+                            'isBatchMode': True,
+                            'installingMods': False,
+                            'openingGameLauncher': False,
+                            'killingGame': False,
+                            'creatingAttachments': False,
+                            'renamingAttachmentFiles': False,
+                        })
+                        if otherExitCode:
+                            raise ValueError(f'Error running batch settings file "{otherSettingsFilePath}"')
+                        sprintPad()
+                        sprint(f'Done running batch settings file "{otherSettingsFilePath}".')
+                    except Exception as e:
+                        self.printError(e)
 
             srcPakPath = getPathInfo((settings.get('srcPakPath', None) or '').strip() or srcPakPath)['best']
             if not srcPakPath and inspecting:
@@ -3137,7 +3164,7 @@ class ModSwapCommandRunner():
                     sprint(f'{self.dryRunPrefix if not written else ""}Done removing.')
                 sprintPad()
 
-            if (installingMods and not self.exitCode) or searchingGameAssets or inspecting:
+            if (installingMods and not self.exitCode) or searchingGameAssets or (inspecting and not self.isBatchMode):
                 sprintPad()
                 sprint(f'Analyzing mod configuration...')
 
@@ -3591,7 +3618,7 @@ class ModSwapCommandRunner():
                         finally:
                             self.stopKeyboardListener()
 
-                if installingMods or inspecting:
+                if installingMods or (inspecting and not self.isBatchMode):
                     sprintPad()
                     sprint(f'Determining target active mod set...')
                     if activeModConfigName:
