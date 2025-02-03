@@ -2367,7 +2367,11 @@ class ModSwapCommandRunner():
                 customizationItemDbPath = getPathInfo(customizationItemDbPath)['normalized']
                 if not customizationItemDbPath:
                     if extractingAttachments or upgradingMods or mixingAttachments:
-                        self.printError('Missing or invalid `customizationItemDbPath`')
+                        message = 'Missing or invalid `customizationItemDbPath`'
+                        if customizationItemDbPathUnaltered:
+                            self.printError(message)
+                        else:
+                            self.printWarning(message)
                 else:
                     customizationItemDbContentDirRelativePath = getContentDirRelativePath(customizationItemDbPath)
                     if customizationItemDbContentDirRelativePath is None:
