@@ -1186,7 +1186,7 @@ class ModSwapCommandRunner():
             for filename in findSettingsFiles(settingsDirPathInfo['absolute']):
                 discoveredSettingsFiles.append(filename)
                 sprint(f'{len(discoveredSettingsFiles)} - {filename}')
-            sprint('Done scanning. Discovered {len(discoveredSettingsFiles)} settings files')
+            sprint(f'Done scanning. Discovered {len(discoveredSettingsFiles)} settings files')
             sprintPad()
 
         settingsFilePath = settingsFilePathInfo['best']
