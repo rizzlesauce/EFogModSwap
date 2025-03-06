@@ -18,6 +18,7 @@ KnownSupportedGameVersions = [
     '4.4.2',
     '6.5.2',
     '6.7.0',
+    '6.7.2',
 ]
 DefaultLauncherRelPath = '4.4.2 Launcher.bat'
 DefaultGameServerProgramName = 'Server.exe'
@@ -25,9 +26,11 @@ DefaultGameLobbyProgramName = 'steam_lobby.exe'
 
 
 def getGameUnrealEngineVersion(gameVersion):
-    if gameVersion == '4.4.2':
+    gameVersionSemver = semver.VersionInfo.parse(gameVersion)
+    if gameVersionSemver.match('4.4.2'):
         return '4.25'
-    if gameVersion in ('6.5.2', '6.7.0'):
+
+    if gameVersionSemver.match('>=6.5.2') and gameVersionSemver.match('<=6.7.2'):
         return '4.27'
 
 
@@ -93,7 +96,7 @@ def getLauncherBatchFileContent(
     usingOriginalPause = usingOriginalBehavior
     usingPageClearCls = False
     if usingServer is None:
-        usingServer = semver.VersionInfo.parse(gameVersion) < semver.VersionInfo.parse('6.5.2')
+        usingServer = semver.VersionInfo.parse(gameVersion).match('<6.5.2')
 
     if not gameName:
         gameName = DefaultGameName
@@ -107,8 +110,11 @@ def getLauncherBatchFileContent(
     gameArgs = []
     if gameVersion == '4.4.2':
         gameArgs = ['-DX12']
-    elif gameVersion == '6.7.0':
-        gameArgs = ['-eac-nop-loaded']
+    else:
+        gameVersionSemver = semver.VersionInfo.parse(gameVersion)
+        if gameVersionSemver.match('>=6.7.0') and gameVersionSemver.match('<=6.7.2'):
+            gameArgs = ['-eac-nop-loaded']
+            gameArgs.append('-DX12')
     gameArgs.extend([
         '-SaveToUserDir',
         '-UserDir="Data"',

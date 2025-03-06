@@ -880,7 +880,7 @@ class ModSwapCommandRunner():
                                         # Correct the blueprint property name for different game versions
                                         attachmentValues = getPropertyValue(attachment['attachmentData'])
                                         blueprintAttachmentProperty = getAttachmentBlueprintProperty(attachmentValues)
-                                        if semver.VersionInfo.parse(self.gameVersion) >= semver.VersionInfo.parse('6.5.2'):
+                                        if semver.VersionInfo.parse(self.gameVersion).match('>=6.5.2'):
                                             if blueprintAttachmentProperty[NameFieldName] != AccessoryBlueprintName:
                                                 blueprintAttachmentProperty[NameFieldName] = AccessoryBlueprintName
                                                 if self.debug:
@@ -1696,7 +1696,7 @@ class ModSwapCommandRunner():
                     sprint('Game is not running.')
                 sprintPad()
 
-                if semver.VersionInfo.parse(self.gameVersion) == semver.VersionInfo.parse('4.4.2'):
+                if semver.VersionInfo.parse(self.gameVersion).match('4.4.2'):
                     sprintPad()
                     sprint(f'{self.dryRunPrefix}Killing game lobby...')
                     if getGameLobbyIsRunning():
@@ -1726,7 +1726,7 @@ class ModSwapCommandRunner():
                         sprint('Lobby is not running.')
                     sprintPad()
 
-                if semver.VersionInfo.parse(self.gameVersion) == semver.VersionInfo.parse('4.4.2'):
+                if semver.VersionInfo.parse(self.gameVersion).match('4.4.2'):
                     sprintPad()
                     sprint(f'{self.dryRunPrefix}Killing game server...')
                     if getGameServerIsRunning():
@@ -1857,7 +1857,7 @@ class ModSwapCommandRunner():
 
                         attachmentValues = getPropertyValue(attachment['attachmentData'])
                         attachmentBlueprintProperty = getAttachmentBlueprintProperty(attachmentValues)
-                        if semver.VersionInfo.parse(self.gameVersion) >= semver.VersionInfo.parse('6.5.2'):
+                        if semver.VersionInfo.parse(self.gameVersion).match('>=6.5.2'):
                             attachmentBlueprintProperty[NameFieldName] = AccessoryBlueprintName
                         assetPath = getAssetPathProperty(getPropertyValue(attachmentBlueprintProperty))
                         assetPath[AssetNameFieldName] = ''

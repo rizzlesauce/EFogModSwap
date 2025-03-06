@@ -75,13 +75,13 @@ def getModelIdProperty(modelValues, gameVersion):
             NameFieldName,
         ],
         [
-            NamePropertyDataType if gameVersionSemver < semver.VersionInfo.parse('6.5.2') \
+            NamePropertyDataType if gameVersionSemver.match('<6.5.2') \
                 # TODO: It appears it's supposed to be StringPropertyDataType for 6.5.2, but possibly can also be NamePropertyDataType
-                else [StringPropertyDataType, NamePropertyDataType] if gameVersionSemver == semver.VersionInfo.parse('6.5.2') \
+                else [StringPropertyDataType, NamePropertyDataType] if gameVersionSemver.match('6.5.2') \
                 # >= 6.5.2
                 else StringPropertyDataType,
-            'CustomizationId' if gameVersionSemver >= semver.VersionInfo.parse('6.7.0') else 'ID',
         ],
+            'CustomizationId' if gameVersionSemver.match('>=6.7.0') else 'ID',
     )
 
 
@@ -163,7 +163,7 @@ def getAttachmentBlueprintProperty(attachmentValues, gameVersion=None):
     name = None
     if gameVersion is None:
         name = [AccessoryBlueprintName, AttachmentBlueprintName]
-    elif semver.VersionInfo.parse(gameVersion) >= semver.VersionInfo.parse('6.5.2'):
+    elif semver.VersionInfo.parse(gameVersion).match('>=6.5.2'):
         name = AccessoryBlueprintName
     else:
         name = AttachmentBlueprintName
@@ -308,10 +308,12 @@ def addAllToNameMap(value, nameMapSet, path=''):
 
 
 def upgradeCustomizationItemDb(customizationItemDb, gameVersion, newGameVersion, dryRun=False, debug=False):
-    if gameVersion != '6.5.2':
+    gameVersionSemver = semver.VersionInfo.parse(gameVersion)
+    if not gameVersionSemver.match('6.5.2'):
         raise ValueError('Only supports upgrading from version 6.5.2')
-    if newGameVersion != '6.7.0':
-        raise ValueError('Only supports upgrading to version 6.7.0')
+
+    if not (gameVersionSemver.match('>=6.7.0') and gameVersionSemver.match('<=6.7.2')):
+        raise ValueError('Only supports upgrading to version 6.7.*')
 
     # TODO: use this in a different function to "unlock" items, levels, etc., in base game files.
     # Another way of doing this is to not rename the field, but to change the value of the field.

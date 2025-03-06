@@ -112,7 +112,7 @@ install any updated mods targeted for installation, and finally launch the game.
 To upgrade a mod from one game version to another, use the `Upgrade` action. `prevGameVersion` (upgrading from)
 and `gameVersion` (upgrading to) settings need to be configured, as well as `unrealPakPath` and
 [uassetGuiPath](https://github.com/atenfyr/UAssetGUI). Currently, upgrading only works on cooked
-CustomizationItemDB assets for certain versions (6.5.2 -> 6.7.0). You'll also need to configure one or more
+CustomizationItemDB assets for certain versions (6.5.2 -> 6.7.*). You'll also need to configure one or more
 data table assets. The simplest way is to configure `srcPakPath` to the pakchunk of the old version,
 and set `customizationItemDbPath` to `/Content/**/CustomizationItemDB`, so that it automatically upgrades
 every data table in the pakchunk. Then, run `upgrade pak`, and this will produce an upgraded pakchunk
@@ -123,10 +123,10 @@ argument `--srcPakPath <folder containing mods>/*.pak` to specify multiple pakch
 run `upgrade pak` and confirm that you want to run actions on each pakchunk. Any pakchunk errors will be reported
 at the end.
 
-#### Example usage: upgrading a folder of mods from 6.5.2 to 6.7.0
+#### Example usage: upgrading a folder of mods from 6.5.2 to 6.7.2
 From the command line (powershell), run:
 ```
-.\EFogModSwap.exe --prevGameVersion 6.5.2 --gameVersion 6.7.0 --srcPakPath <path-to-my-6.5.2-mods-folder>\*.pak --customizationItemDbPath /Content/**/CustomizationItemDB
+.\EFogModSwap.exe --prevGameVersion 6.5.2 --gameVersion 6.7.2 --srcPakPath <path-to-my-6.5.2-mods-folder>\*.pak --customizationItemDbPath /Content/**/CustomizationItemDB
 ```
 Note the slash direction and case sensitivity in the `--customizationItemDbPath` argument.
 
@@ -139,7 +139,7 @@ From the menu:
 * Type `upgrade pak` and press Enter to run the actions
 * Confirm that you want to run actions on each pakchunk by pressing Enter
 
-Upgraded pakchunks will be output in a new folder called `paking-6.7.0`.
+Upgraded pakchunks will be output in a new folder called `paking-6.7.2`.
 
 ### Mixing socket attachments
 
@@ -259,7 +259,7 @@ Compatible with:
 * EFog:
   * 4.4.2
   * 6.5.2
-  * 6.7.0 (*not fully tested)
+  * 6.7.* (*not fully tested)
 * Cooked assets, UnrealPak, and Umodel for Unreal Engine versions:
   * 4.25
   * 4.27

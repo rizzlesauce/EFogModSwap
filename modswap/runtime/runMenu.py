@@ -172,7 +172,8 @@ def runMenu(args, parser):
         sprint(f'A new version ({latestVersion}) is available to download at {getGithubProjectReleaseUrl()}')
 
     latestVersion = getLatestReleaseVersion()
-    if latestVersion and semver.compare(Version, latestVersion) < 0:
+    currentVersionSemver = semver.VersionInfo.parse(Version)
+    if latestVersion and currentVersionSemver.match(f'<{latestVersion}'):
         sprintPad()
         printLatestVersionDownloadMessage(latestVersion)
 
@@ -805,10 +806,11 @@ def runMenu(args, parser):
                 sprint(f'{parser.prog} {Version}')
                 latestVersion = getLatestReleaseVersion()
                 if latestVersion:
-                    if semver.compare(Version, latestVersion) < 0:
+                    currentVersionSemver = semver.VersionInfo.parse(Version)
+                    if currentVersionSemver.match(f'<{latestVersion}'):
                         sprintPad()
                         printLatestVersionDownloadMessage(latestVersion)
-                    elif semver.compare(Version, latestVersion) == 0:
+                    elif currentVersionSemver.match(latestVersion):
                         sprint('Up-to-date.')
                     else:
                         sprintPad()
