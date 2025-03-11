@@ -312,8 +312,9 @@ def upgradeCustomizationItemDb(customizationItemDb, gameVersion, newGameVersion,
     if not gameVersionSemver.match('6.5.2'):
         raise ValueError('Only supports upgrading from version 6.5.2')
 
-    if not (gameVersionSemver.match('>=6.7.0') and gameVersionSemver.match('<=6.7.2')):
-        raise ValueError('Only supports upgrading to version 6.7.*')
+    newGameVersionSemver = semver.VersionInfo.parse(newGameVersion)
+    if not (newGameVersionSemver.match('>=6.7.0') and newGameVersionSemver.match('<=6.7.2')):
+        raise ValueError('Only supports upgrading to version >=6.7.0 & <=6.7.2')
 
     # TODO: use this in a different function to "unlock" items, levels, etc., in base game files.
     # Another way of doing this is to not rename the field, but to change the value of the field.

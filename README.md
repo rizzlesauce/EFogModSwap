@@ -133,8 +133,8 @@ Note the slash direction and case sensitivity in the `--customizationItemDbPath`
 From the menu:
 * Change `Overwrite` to `always`
 * Go into `MoreOptions` submenu
-  * Configure `UassetGuiPath` and `UnrealPakPath` to the appropriate EXE tool paths
-  * Configure `SigFile` to the reference `.sig` file used for pakchunks
+  * Configure `UassetGuiPath` to the appropriate tool EXE path
+  * Configure `UnrealPakPath` to the appropriate tool EXE path
   * Go `Back` to the main menu
 * Type `upgrade pak` and press Enter to run the actions
 * Confirm that you want to run actions on each pakchunk by pressing Enter
